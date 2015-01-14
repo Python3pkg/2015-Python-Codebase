@@ -20,14 +20,12 @@ class ArcadeDrive(yeti.Module):
         self.referee.watch(self.joystick)
 
         #Setup the robotdrive
-        self.robotdrive = wpilib.RobotDrive(0, 1)
+        self.robotdrive = wpilib.RobotDrive(0, 1, 2, 3)
         self.referee.watch(self.robotdrive)
 
     @gamemode.teleop_task
     @asyncio.coroutine
     def teleop_loop(self):
-
-        print("Beginning Teleop from ArcadeDrive!")
 
         #Loop until end of teleop mode.
         while gamemode.is_teleop():
@@ -37,5 +35,3 @@ class ArcadeDrive(yeti.Module):
 
             #Pause for a moment to let the rest of the code run.
             yield from asyncio.sleep(.05)
-
-        print("Ending Teleop from ArcadeDrive!")
