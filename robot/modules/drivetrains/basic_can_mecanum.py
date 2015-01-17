@@ -6,6 +6,10 @@ from yeti.wpilib_extensions import Referee
 from yeti.interfaces import gamemode, datastreams
 
 class BasicCANMecanum(yeti.Module):
+    """
+    A basic mecanum controller, taking input from the 'drivetrain_control' datastream
+    and outputting to CAN Jaguars in percent mode.
+    """
 
     #CAN IDS for the Drivetrain Jaguars in the following order:
     #Front Left

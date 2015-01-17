@@ -8,6 +8,12 @@ from yeti.interfaces import gamemode, datastreams
 from yeti.wpilib_extensions import Referee
 
 class AdvancedCANMecanum(yeti.Module):
+    """
+    An advanced mecanum controller, taking input from the 'drivetrain_control' datastream
+    and outputting to CAN Jaguars in closed-loop control mode.
+
+    NOT FINISHED!!!!
+    """
 
     #CAN IDS for the Drivetrain Jaguars in the following order:
     #Front Left

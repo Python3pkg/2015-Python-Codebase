@@ -7,7 +7,8 @@ from yeti.wpilib_extensions import Referee
 
 class PWMMecanum(yeti.Module):
     """
-    A bare-bones, simplistic mecanum drive utilizing RobotDrive.
+    A basic mecanum controller, taking input from the 'drivetrain_control' datastream
+    and outputting to Jaguars via PWM.
     """
 
     #Values to convert from fps to percentage
