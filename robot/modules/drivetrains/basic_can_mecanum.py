@@ -16,7 +16,7 @@ class BasicCANMecanum(yeti.Module):
     #Rear Left
     #Front Right
     #Rear Right
-    CAN_IDS = [10, 11, 12, 13]
+    CAN_IDS = [13, 11, 10, 12]
 
     #Values to convert from fps to percentage
     MAX_X_FPS = 14
@@ -61,6 +61,10 @@ class BasicCANMecanum(yeti.Module):
             right_speed = control_data.get("right_fps", 0)
             clockwise_speed = control_data.get("clockwise_rps", 0)
 
+            wpilib.SmartDashboard.putNumber("forward_fps", forward_speed)
+            wpilib.SmartDashboard.putNumber("right_fps", right_speed)
+            wpilib.SmartDashboard.putNumber("clockwise_speed", clockwise_speed)
+
             forward_percentage = forward_speed / self.MAX_Y_FPS
             right_percentage = right_speed / self.MAX_X_FPS
             clockwise_percentage = clockwise_speed / self.MAX_R_RPS
@@ -82,8 +86,14 @@ class BasicCANMecanum(yeti.Module):
             #Send to motors.
             self.motor_controllers[0].set(front_left_out)
             self.motor_controllers[1].set(rear_left_out)
-            self.motor_controllers[2].set(front_right_out)
-            self.motor_controllers[3].set(rear_right_out)
+            self.motor_controllers[2].set(-front_right_out)
+            self.motor_controllers[3].set(-rear_right_out)
+
+            wpilib.SmartDashboard.putNumber("front_left_out", front_left_out)
+            wpilib.SmartDashboard.putNumber("front_right_out", front_right_out)
+            wpilib.SmartDashboard.putNumber("rear_left_out", rear_left_out)
+            wpilib.SmartDashboard.putNumber("rear_right_out", rear_right_out)
+
 
             #Pause for a moment to let the rest of the code run
             yield from asyncio.sleep(.05)

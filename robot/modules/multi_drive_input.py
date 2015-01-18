@@ -7,13 +7,13 @@ from yeti.interfaces import gamemode, datastreams
 
 class MultiDriveInput(yeti.Module):
 
-    MODE_TOGGLE = True
+    MODE_TOGGLE = False
     #Input modes:
     #0: Tank drive
     #1: Toggle drive
     #2: Three Axis drive (If Enabled)
-    DEFAULT_MODE = 0
-    THREE_AXIS_MODE = False
+    DEFAULT_MODE = 2
+    THREE_AXIS_MODE = True
 
     #Maximum values for input loop to output
     MAX_Y_INPUT_FPS = 14
@@ -21,7 +21,8 @@ class MultiDriveInput(yeti.Module):
     MAX_ROT_INPUT_DPS = 2
 
     #Square the normalized outputs to provide a logarithmic scale effect.
-    SQUARE_OUTPUTS = False
+    SQUARE_OUTPUTS = True
+
 
     def module_init(self):
         joytick_ids = [0, 1]
@@ -93,14 +94,37 @@ class MultiDriveInput(yeti.Module):
                     clockwise_percentage = -self.joysticks[0].getX()
 
             elif input_mode == 2:
-                if not self.THREE_AXIS_MODE:
-                    input_mode = 0
+                #if not self.THREE_AXIS_MODE:
+                #    input_mode = 0
+                forward_percentage = -self.joysticks[0].getY()
+                right_percentage = self.joysticks[0].getX()
+                clockwise_percentage = self.joysticks[0].getZ()
+                if abs(forward_percentage) < .15:
+                    forward_percentage = 0
+                if abs(right_percentage) < .15:
+                    right_percentage = 0
+                if abs(clockwise_percentage) < .15:
+                    clockwise_percentage = 0
+
+
 
             #If enabled, square the outputs to provide a logarithmic effect.
             if self.SQUARE_OUTPUTS:
+                fs = 1
+                if forward_percentage < 0:
+                    fs = -1
+                rs = 1
+                if right_percentage < 0:
+                    rs = -1
+                cs = 1
+                if clockwise_percentage < 0:
+                    cs = -1
                 forward_percentage **= 2
+                forward_percentage *= fs
                 right_percentage **= 2
+                right_percentage *= rs
                 clockwise_percentage **= 2
+                clockwise_percentage *= cs
 
             #Scale to real-world measurments
             forward_fps = forward_percentage * self.MAX_Y_INPUT_FPS
