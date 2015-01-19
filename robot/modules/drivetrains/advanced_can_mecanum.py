@@ -2,7 +2,6 @@ import asyncio
 import wpilib
 import yeti
 import numpy as np
-import time
 
 from yeti.interfaces import gamemode, datastreams
 from yeti.wpilib_extensions import Referee
@@ -20,13 +19,16 @@ class AdvancedCANMecanum(yeti.Module):
     #Rear Left
     #Front Right
     #Rear Right
-    #CAN_IDS = [10, 11, 12, 13]
-    CAN_IDS = [0, 1, 2, 3]
+    CAN_IDS = [13, 11, 10, 12]
 
     #Jagur PID Values
     JAG_P = 1
     JAG_I = 2
     JAG_D = .1
+
+    #Use Gyro
+    USE_GYRO = False
+    gyro_initialized = False
 
     #Gyro PID Values
     GYRO_P = 1
@@ -48,18 +50,12 @@ class AdvancedCANMecanum(yeti.Module):
         #Setup motor controllers
         self.motor_controllers = list()
         for motor_id in self.CAN_IDS:
-            controller = wpilib.Jaguar(motor_id)
-            #controller = wpilib.CANJaguar(motor_id)
-            #controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
+            controller = wpilib.CANJaguar(motor_id)
+            controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
+            wpilib.LiveWindow.addActuator(self.name, "CAN Talon {}".format(motor_id), controller)
 
             self.referee.watch(controller)
             self.motor_controllers.append(controller)
-
-        #setup gyro
-        self.gyro = wpilib.Gyro(0)
-
-        #Setup rotational PID controller
-        self.rot_pid = wpilib.PIDController(self.GYRO_P, self.GYRO_I, self.GYRO_D, self.get_rot_pid_val, self.save_rot_pid_out)
 
         #Start control datastream
         #Values are:
@@ -68,21 +64,53 @@ class AdvancedCANMecanum(yeti.Module):
         # clockwise_rps -- desired clockwise rotational speed in rotations-per-second
         self.control_datastream = datastreams.get_datastream("drivetrain_control")
 
-    pid_out = 0
+        if self.USE_GYRO:
+            self.start_coroutine(self.gyro_init)
 
-    def save_rot_pid_out(self, value):
-        self.pid_out = value
+    pid_rot_value = 0
 
-    def get_rot_pid_val(self):
+    def gyro_pid_out(self, value):
+        self.pid_rot_value = value
+
+    def gyro_pid_in(self):
         return self.gyro.getRate()
+
+    @asyncio.coroutine
+    def gyro_init(self):
+        yield from self.event_loop.run_in_executor(None, self.init_gyro_object)
+        self.referee.watch(self.gyro)
+
+        #Setup rotational PID controller
+        self.gyro_pid = wpilib.PIDController(self.GYRO_P, self.GYRO_I, self.GYRO_D, self.gyro_pid_in, self.gyro_pid_out)
+        #Enable it if the bot is enabled
+        if gamemode.is_enabled():
+            self.gyro_pid.enable()
+
+        #Attatch to LiveWindow
+        wpilib.LiveWindow.addSensor(self.name, "Gyro", self.gyro)
+
+        #Set initialized flag
+        self.gyro_initialized = True
+
+    def init_gyro_object(self):
+        """
+        This method is run another thread because it blocks while calibrating the gyro.
+        """
+        self.gyro = wpilib.Gyro(0)
+
+
 
     @gamemode.enabled_task
     @asyncio.coroutine
     def drive_loop(self):
-        self.rot_pid.enable()
 
-        #for controller in self.motor_controllers:
-        #    controller.enableControl()
+        #Enable the gyro pid loop if it is initialized
+        if self.gyro_initialized:
+            self.gyro_pid.enable()
+
+        #Enable CAN Jaguars
+        for controller in self.motor_controllers:
+            controller.enableControl()
 
         while gamemode.is_enabled():
             #Get control inputs
@@ -98,8 +126,11 @@ class AdvancedCANMecanum(yeti.Module):
                              [0]])
 
             #Handle rotation PID first
-            self.rot_pid.setSetpoint(clockwise_speed)
-            clockwise_val = self.pid_out
+            if self.gyro_initialized:
+                self.gyro_pid.setSetpoint(clockwise_speed)
+                clockwise_val = self.pid_rot_value
+            else:
+                clockwise_val = clockwise_speed/300
 
             #Package control values into matrix
             control_matrix = np.mat([[forward_speed],
@@ -116,16 +147,21 @@ class AdvancedCANMecanum(yeti.Module):
             wpilib.SmartDashboard.putNumber("left_rear_wheel", output[1, 0])
             wpilib.SmartDashboard.putNumber("right_front_wheel", output[2, 0])
             wpilib.SmartDashboard.putNumber("right_rear_wheel", output[3, 0])
-            wpilib.SmartDashboard.putNumber("Rotation PID", clockwise_val)
+            wpilib.SmartDashboard.putNumber("Rotation val", clockwise_val)
 
             #Send to motors.
-#            self.motor_controllers[0].set(outputs[0, 0])
-#            self.motor_controllers[1].set(outputs[0, 1])
-#            self.motor_controllers[2].set(outputs[0, 2])
-#            self.motor_controllers[3].set(outputs[0, 3])
+            self.motor_controllers[0].set(output[0, 0])
+            self.motor_controllers[1].set(output[1, 0])
+            self.motor_controllers[2].set(output[2, 0])
+            self.motor_controllers[3].set(output[3, 0])
 
             #Pause for a moment to let the rest of the code run
             yield from asyncio.sleep(.05)
-        self.rot_pid.disable()
-        #for controller in self.motor_controllers:
-        #    controller.disableControl()
+
+        #Disable pid if used
+        if self.gyro_initialized:
+            self.gyro_pid.disable()
+
+        #Disable CAN Jaguars.
+        for controller in self.motor_controllers:
+            controller.disableControl()
