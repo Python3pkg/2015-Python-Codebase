@@ -1,3 +1,2 @@
 wpilib
-numpy
 yeti

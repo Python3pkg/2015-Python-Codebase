@@ -11,6 +11,10 @@ class Debug(yeti.Module):
     def module_init(self):
         self.joystick = wpilib.Joystick(0)
         self.start_coroutine(self.reload_mods())
+        self.motor = wpilib.Talon(5)
+        wpilib.LiveWindow.setEnabled(True)
+        for i in range(20):
+            wpilib.SmartDashboard.putString("message" + str(i), "Hi!")
 
     @asyncio.coroutine
     def reload_mods(self):

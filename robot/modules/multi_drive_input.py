@@ -16,9 +16,9 @@ class MultiDriveInput(yeti.Module):
     THREE_AXIS_MODE = True
 
     #Maximum values for input loop to output
-    MAX_Y_INPUT_FPS = 14
-    MAX_X_INPUT_FPS = 14
-    MAX_ROT_INPUT_DPS = 2
+    MAX_Y_INPUT_FPS = 10
+    MAX_X_INPUT_FPS = 10
+    MAX_ROT_INPUT_RPS = 1
 
     #Square the normalized outputs to provide a logarithmic scale effect.
     SQUARE_OUTPUTS = True
@@ -84,14 +84,10 @@ class MultiDriveInput(yeti.Module):
                 clockwise_percentage = (ly - ry)/2
 
             elif input_mode == 1:
-                strafemode = self.joysticks[0].getRawButton(8)
 
-                if strafemode:
-                    forward_percentage = -self.joysticks[0].getY()
-                    right_percentage = -self.joysticks[0].getX()
-                else:
-                    forward_percentage = -self.joysticks[0].getY()
-                    clockwise_percentage = -self.joysticks[0].getX()
+                forward_percentage = -self.joysticks[0].getY()
+                right_percentage = self.joysticks[0].getX()
+                clockwise_percentage = self.joysticks[1].getX()/2
 
             elif input_mode == 2:
                 #if not self.THREE_AXIS_MODE:
@@ -99,9 +95,9 @@ class MultiDriveInput(yeti.Module):
                 forward_percentage = -self.joysticks[0].getY()
                 right_percentage = self.joysticks[0].getX()
                 clockwise_percentage = self.joysticks[0].getZ()
-                if abs(forward_percentage) < .15:
+                if abs(forward_percentage) < .10:
                     forward_percentage = 0
-                if abs(right_percentage) < .15:
+                if abs(right_percentage) < .10:
                     right_percentage = 0
                 if abs(clockwise_percentage) < .15:
                     clockwise_percentage = 0
@@ -129,7 +125,7 @@ class MultiDriveInput(yeti.Module):
             #Scale to real-world measurments
             forward_fps = forward_percentage * self.MAX_Y_INPUT_FPS
             right_fps = right_percentage * self.MAX_X_INPUT_FPS
-            clockwise_fps = clockwise_percentage * self.MAX_ROT_INPUT_DPS
+            clockwise_fps = clockwise_percentage * self.MAX_ROT_INPUT_RPS
 
             #Send values to drive module
             self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "clockwise_rps": clockwise_fps})

@@ -12,14 +12,14 @@ class CanJagTest(yeti.Module):
 
         self.jstick = wpilib.Joystick(0)
 
-        self.canjag = wpilib.CANJaguar(10)
+        self.canjag = wpilib.CANJaguar(14)
         self.referee.watch(self.canjag)
 
         #wpilib.LiveWindow.addActuator("jagtest", "jag10", self.canjag)
         #wpilib.LiveWindow.setEnabled(True)
         #self.canjag.setPositionModeQuadEncoder(10, 2, 2, 0)
-        self.canjag.setPercentMode()
-        #self.canjag.setCurrentModePID(1, .1, 0)
+        #self.canjag.setPercentMode()
+        self.canjag.setCurrentModePID(1, .1, 0)
         self.canjag.enableControl()
 
         self.start_coroutine(self.status_loop())
@@ -39,7 +39,7 @@ class CanJagTest(yeti.Module):
     @asyncio.coroutine
     def cycle_loop(self):
         while gamemode.is_teleop():
-            val = self.jstick.getRawAxis(1)
+            val = self.jstick.getRawAxis(1)*60
             self.canjag.set(val)
             wpilib.SmartDashboard.putNumber("output", val)
             yield from asyncio.sleep(.05)

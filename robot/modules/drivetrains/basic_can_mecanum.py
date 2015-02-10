@@ -16,12 +16,12 @@ class BasicCANMecanum(yeti.Module):
     #Rear Left
     #Front Right
     #Rear Right
-    CAN_IDS = [13, 11, 10, 12]
+    CAN_IDS = [13, 11, 12, 10]
 
     #Values to convert from fps to percentage
     MAX_X_FPS = 14
     MAX_Y_FPS = 14
-    MAX_R_RPS = 2
+    MAX_R_RPS = 1
 
     def module_init(self):
         #Initialize the Referee for the module.
@@ -98,6 +98,11 @@ class BasicCANMecanum(yeti.Module):
             #Pause for a moment to let the rest of the code run
             yield from asyncio.sleep(.05)
 
+        #Disable the jaguars
+        for controller in self.motor_controllers:
+            controller.disableControl()
+
+    def module_deinit(self):
         #Disable the jaguars
         for controller in self.motor_controllers:
             controller.disableControl()
