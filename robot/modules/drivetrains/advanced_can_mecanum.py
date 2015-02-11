@@ -93,11 +93,8 @@ class AdvancedCANMecanum(yeti.Module):
                 return self.gyro.getRate()/360
 
             def rate_pid_out(val):
-                self.gyro_rate_pid_out += val
-                if self.gyro_rate_pid_out > self.GYRO_RATE_PID_MAX_OUT:
-                    self.gyro_rate_pid_out = self.GYRO_RATE_PID_MAX_OUT
-                elif self.gyro_rate_pid_out < -self.GYRO_RATE_PID_MAX_OUT:
-                    self.gyro_rate_pid_out = -self.GYRO_RATE_PID_MAX_OUT
+
+                self.gyro_rate_pid_out = val
 
             self.gyro_rate_pid_controller = wpilib.PIDController(self.GYRO_RATE_P, self.GYRO_RATE_I, self.GYRO_RATE_D, rate_pid_source, rate_pid_out)
 
@@ -131,13 +128,50 @@ class AdvancedCANMecanum(yeti.Module):
 
             yield from asyncio.sleep(.1)
 
+    @yeti.autorun_coroutine
+    @asyncio.coroutine
+    def tracking_loop(self):
+        last_position = [0, 0]
+        last_gyro_angle = 0
+        if self.gyro_initialized:
+            self.gyro.reset()
+        last_wheel_positions = [c.getPosition() for c in self.motor_controllers]
+        last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
+        while True:
+            yield from asyncio.sleep(.05)
+            current_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
+            delta_time = current_cycle_timestamp - last_cycle_timestamp
+
+            # Track wheel movement and get distances and average speeds
+            current_wheel_positions = [c.getPosition() for c in self.motor_controllers]
+            delta_wheel_positions = [c - l for c, l in zip(current_wheel_positions, last_wheel_positions)]
+            last_wheel_positions = current_wheel_positions
+            average_wheel_speeds = [d * delta_time for d in delta_wheel_positions]
+
+            # Get gyro state and get angle and average speed
+            current_gyro_angle = self.gyro.getAngle()
+            delta_gyro_angle = current_gyro_angle - last_gyro_angle
+            average_gyro_angle = last_gyro_angle + current_gyro_angle / 2
+            last_gyro_angle = current_gyro_angle
+            average_gyro_speed = delta_gyro_angle * delta_time
+
+            # Calculate angle of translation
+
+
+
+
+
+
     @gamemode.enabled_task
     @asyncio.coroutine
     def drive_loop(self):
 
         #Enable the gyro rate pid loop if it is initialized
-        if self.gyro_initialized and self.GYRO_RATE_PID:
-            self.gyro_rate_pid_controller.enable()
+        if self.gyro_initialized:
+            if self.GYRO_RATE_PID:
+                self.gyro_rate_pid_controller.enable()
+            if self.GYRO_POS_LOCK_PID:
+                self.gyro_pos_lock_pid_controller.disable()
 
         #Enable CAN Jaguars
         for controller in self.motor_controllers:
