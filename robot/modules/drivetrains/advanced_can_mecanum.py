@@ -128,7 +128,7 @@ class AdvancedCANMecanum(yeti.Module):
 
             yield from asyncio.sleep(.1)
 
-    @yeti.autorun_coroutine
+    #@yeti.autorun_coroutine
     @asyncio.coroutine
     def tracking_loop(self):
         last_position = [0, 0]
@@ -141,25 +141,45 @@ class AdvancedCANMecanum(yeti.Module):
             yield from asyncio.sleep(.05)
             current_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
             delta_time = current_cycle_timestamp - last_cycle_timestamp
+            last_cycle_timestamp = current_cycle_timestamp
 
             # Track wheel movement and get distances and average speeds
-            current_wheel_positions = [c.getPosition() for c in self.motor_controllers]
+            current_wheel_positions = []
+            current_wheel_positions[0] = self.motor_controllers[0].getPosition()
+            current_wheel_positions[1] = self.motor_controllers[1].getPosition()
+            current_wheel_positions[2] = -self.motor_controllers[2].getPosition()
+            current_wheel_positions[3] = -self.motor_controllers[3].getPosition()
+
             delta_wheel_positions = [c - l for c, l in zip(current_wheel_positions, last_wheel_positions)]
             last_wheel_positions = current_wheel_positions
             average_wheel_speeds = [d * delta_time for d in delta_wheel_positions]
 
-            # Get gyro state and get angle and average speed
+            # Get gyro state and get average angle
             current_gyro_angle = self.gyro.getAngle()
-            delta_gyro_angle = current_gyro_angle - last_gyro_angle
             average_gyro_angle = last_gyro_angle + current_gyro_angle / 2
             last_gyro_angle = current_gyro_angle
-            average_gyro_speed = delta_gyro_angle * delta_time
 
-            # Calculate angle of translation
+            # Calculate cartesian velocity of translation
+            trans_y_speed = average_wheel_speeds[0]/4 + average_wheel_speeds[1]/4 + average_wheel_speeds[2]/4 + average_wheel_speeds[3]/4
+            trans_x_speed = average_wheel_speeds[0]/4 - average_wheel_speeds[1]/4 - average_wheel_speeds[2]/4 + average_wheel_speeds[3]/4
 
+            # Convert to polar coordinates
+            trans_angle = math.atan2(trans_y_speed, trans_x_speed)
+            trans_speed = math.sqrt(trans_x_speed ** 2 + trans_y_speed ** 2)
 
+            # Convert to world coordinates
+            world_trans_angle = trans_angle + average_gyro_angle
 
+            # Convert speed to distance
+            world_trans_distance = trans_speed * delta_time
 
+            # Convert back to cartesian coordinates
+            world_trans_y_dist = math.sin(world_trans_angle) * world_trans_distance
+            world_trans_x_dist = math.cos(world_trans_angle) * world_trans_distance
+
+            # Add to last values
+            last_position[0] += world_trans_x_dist
+            last_position[1] += world_trans_y_dist
 
 
     @gamemode.enabled_task
@@ -213,8 +233,8 @@ class AdvancedCANMecanum(yeti.Module):
 
             #Inverse kinematics to get mecanum values
             front_left_out = forward_speed + clockwise_speed_out + right_speed
-            front_right_out = forward_speed - clockwise_speed_out - right_speed
             rear_left_out = forward_speed + clockwise_speed_out - right_speed
+            front_right_out = forward_speed - clockwise_speed_out - right_speed
             rear_right_out = forward_speed - clockwise_speed_out + right_speed
 
             #convert from fps to rpm
