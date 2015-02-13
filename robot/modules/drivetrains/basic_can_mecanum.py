@@ -21,7 +21,7 @@ class BasicCANMecanum(yeti.Module):
     #Values to convert from fps to percentage
     MAX_X_FPS = 14
     MAX_Y_FPS = 14
-    MAX_R_RPS = 1
+    MAX_R_DPS = 360
 
     def module_init(self):
         #Initialize the Referee for the module.
@@ -41,7 +41,7 @@ class BasicCANMecanum(yeti.Module):
         #Values are:
         # forward_fps -- desired forward speed in feet-per-second
         # right_fps -- desired right strafe speed in feet-per-second
-        # clockwise_rps -- desired clockwise rotational speed in rotations-per-second
+        # clockwise_dps -- desired clockwise rotational speed in degrees-per-second
         self.control_datastream = datastreams.get_datastream("drivetrain_control")
 
 
@@ -49,6 +49,9 @@ class BasicCANMecanum(yeti.Module):
     @gamemode.enabled_task
     @asyncio.coroutine
     def drive_loop(self):
+
+        #Clear datastream
+        self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "clockwise_dps": 0})
 
         #Enable the jaguars
         for controller in self.motor_controllers:
@@ -59,7 +62,7 @@ class BasicCANMecanum(yeti.Module):
             control_data = self.control_datastream.get()
             forward_speed = control_data.get("forward_fps", 0)
             right_speed = control_data.get("right_fps", 0)
-            clockwise_speed = control_data.get("clockwise_rps", 0)
+            clockwise_speed = control_data.get("clockwise_dps", 0)
 
             wpilib.SmartDashboard.putNumber("forward_fps", forward_speed)
             wpilib.SmartDashboard.putNumber("right_fps", right_speed)
@@ -67,7 +70,7 @@ class BasicCANMecanum(yeti.Module):
 
             forward_percentage = forward_speed / self.MAX_Y_FPS
             right_percentage = right_speed / self.MAX_X_FPS
-            clockwise_percentage = clockwise_speed / self.MAX_R_RPS
+            clockwise_percentage = clockwise_speed / self.MAX_R_DPS
 
             #Inverse kinematics to get mecanum values
             front_left_out = forward_percentage + clockwise_percentage + right_percentage

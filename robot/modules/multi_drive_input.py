@@ -18,7 +18,7 @@ class MultiDriveInput(yeti.Module):
     #Maximum values for input loop to output
     MAX_Y_INPUT_FPS = 10
     MAX_X_INPUT_FPS = 10
-    MAX_ROT_INPUT_RPS = 1
+    MAX_ROT_INPUT_DPS = 360
 
     #Square the normalized outputs to provide a logarithmic scale effect.
     SQUARE_OUTPUTS = True
@@ -125,10 +125,10 @@ class MultiDriveInput(yeti.Module):
             #Scale to real-world measurments
             forward_fps = forward_percentage * self.MAX_Y_INPUT_FPS
             right_fps = right_percentage * self.MAX_X_INPUT_FPS
-            clockwise_fps = clockwise_percentage * self.MAX_ROT_INPUT_RPS
+            clockwise_dps = clockwise_percentage * self.MAX_ROT_INPUT_DPS
 
             #Send values to drive module
-            self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "clockwise_rps": clockwise_fps})
+            self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "clockwise_dps": clockwise_dps})
 
             #Pause for a moment to let the rest of the code run.
             yield from asyncio.sleep(.05)

@@ -3,10 +3,10 @@ import yeti
 import wpilib
 import math
 from yeti.wpilib_extensions import Referee
-from yeti.interfaces import gamemode
+from yeti.interfaces import gamemode, remote_coroutines
 
-class CanElevator(yeti.Module):
-    """A CAN controller for an elevator"""
+class AdvancedElevator(yeti.Module):
+    """An advanced CAN controller for an elevator"""
 
     ####################################
     # CONFIGURATION
@@ -56,8 +56,8 @@ class CanElevator(yeti.Module):
         # Setup CAN Jaguars
 
         # Setup Master
-        #self.master_jaguar = wpilib.CANJaguar(self.MASTER_CAN_ID)
-        #self.referee.watch(self.master_jaguar)
+        self.master_jaguar = wpilib.CANJaguar(self.MASTER_CAN_ID)
+        self.referee.watch(self.master_jaguar)
 
         # Setup Slaves
         self.slave_jaguars = list()
@@ -117,16 +117,18 @@ class CanElevator(yeti.Module):
 
             last_buttons = buttons.copy()
 
+            yield from asyncio.sleep(.1)
+
     # Mode setting helpers
     def set_position_mode(self):
         self.logger.info("Set position mode")
-        #if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Position:
-        #    self.master_jaguar.setPositionModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_DIST_P, self.JAG_DIST_I, self.JAG_DIST_D)
+        if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Position:
+            self.master_jaguar.setPositionModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_DIST_P, self.JAG_DIST_I, self.JAG_DIST_D)
 
     def set_speed_mode(self):
         self.logger.info("Set speed mode")
-        #if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
-        #    self.master_jaguar.setSpeedModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_SPEED_P, self.JAG_SPEED_I, self.JAG_SPEED_D)
+        if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
+            self.master_jaguar.setSpeedModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_SPEED_P, self.JAG_SPEED_I, self.JAG_SPEED_D)
 
 
     @gamemode.teleop_task
@@ -141,21 +143,20 @@ class CanElevator(yeti.Module):
                     axis_val = self.joystick.getRawAxis(self.MANUAL_RUN_AXIS)
                     speed_fps = axis_val * self.MANUAL_MAX_SPEED
                     speed_rpm = self.RPM_PER_FPS * speed_fps
-                    #self.master_jaguar.set(speed_rpm)
+                    self.master_jaguar.set(speed_rpm)
                     yield from asyncio.sleep(.05)
                 self.manual_run = False
-                #self.master_jaguar.set(0)
+                self.master_jaguar.set(0)
             yield from asyncio.sleep(.1)
 
     # Distance mode helpers
     def set_distance_setpoint(self, value):
         self.set_position_mode()
-        #self.master_jaguar.set(value * self.ROT_PER_FOOT)
+        self.master_jaguar.set(value * self.ROT_PER_FOOT)
         self.logger.info("Setting distance setpoint to {}".format(value))
 
     def is_at_setpoint(self, value):
-        #return abs(self.master_jaguar.getPosition() - (value * self.ROT_PER_FOOT)) < self.POSITION_TOLERANCE
-        return False
+        return abs(self.master_jaguar.getPosition() - (value * self.ROT_PER_FOOT)) < self.POSITION_TOLERANCE
 
     @asyncio.coroutine
     def goto_pos(self, value):
@@ -169,23 +170,38 @@ class CanElevator(yeti.Module):
     def goto_home(self):
         self.logger.info("Goto home!")
         yield from self.goto_pos(self.HOME_POSITION)
-        self.logger.info("Leave home!")
+        self.logger.info("Ending goto home!")
 
     @asyncio.coroutine
     def goto_bottom(self):
         self.logger.info("Goto bottom!")
         yield from self.goto_pos(0)
-        self.logger.info("Leave bottom!")
+        self.logger.info("Ending goto bottom!")
 
     @asyncio.coroutine
     def pickup_tote(self):
-        self.logger.info("Getting Tote!")
+        self.logger.info("Getting tote!")
         stop_event = self.get_control()
         self.set_distance_setpoint(0)
         while not stop_event.is_set() and self.joystick.getRawButton(self.PICKUP_TOTE_BUTTON):
             yield from asyncio.sleep(.1)
         if not stop_event.is_set():
             self.set_distance_setpoint(self.HOME_POSITION)
-        self.logger.info("Done getting Tote!")
+        self.logger.info("Ending getting tote!")
 
 
+    #Public coroutines with which to control this remotely
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def elevator_goto_home(self):
+        yield from self.goto_home()
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def elevator_goto_bottom(self):
+        yield from self.goto_bottom()
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def elevator_goto_pos(self, position):
+        yield from self.goto_pos(position)

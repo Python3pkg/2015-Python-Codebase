@@ -3,7 +3,7 @@ import wpilib
 import yeti
 import math
 
-from yeti.interfaces import gamemode, datastreams
+from yeti.interfaces import gamemode, datastreams, remote_coroutines
 from yeti.wpilib_extensions import Referee
 
 class AdvancedCANMecanum(yeti.Module):
@@ -11,7 +11,6 @@ class AdvancedCANMecanum(yeti.Module):
     An advanced mecanum controller, taking input from the 'drivetrain_control' datastream
     and outputting to CAN Jaguars in closed-loop control mode.
 
-    NOT FINISHED!!!!
     """
 
     ####################################
@@ -72,8 +71,15 @@ class AdvancedCANMecanum(yeti.Module):
         #Values are:
         # forward_fps -- desired forward speed in feet-per-second
         # right_fps -- desired right strafe speed in feet-per-second
-        # clockwise_rps -- desired clockwise rotational speed in rotations-per-second
+        # clockwise_dps -- desired clockwise rotational speed in degrees-per-second
         self.control_datastream = datastreams.get_datastream("drivetrain_control")
+
+        self.auto_drive_setpoint_datastream = datastreams.get_datastream("auto_drive_setpoint")
+        self.auto_drive_input_datastream = datastreams.get_datastream("auto_drive_input")
+
+        self.auto_drive_config = [{"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True},
+                                  {"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True},
+                                  {"speed": 360, "acceleration": 360, "tolerance": 3, "use_tracker": True}]
 
         if self.USE_GYRO:
             self.gyro_init()
@@ -90,7 +96,7 @@ class AdvancedCANMecanum(yeti.Module):
         if self.GYRO_RATE_PID:
             #Setup rotational rate PID controller
             def rate_pid_source():
-                return self.gyro.getRate()/360
+                return self.gyro.getRate()
 
             def rate_pid_out(val):
 
@@ -126,7 +132,7 @@ class AdvancedCANMecanum(yeti.Module):
                 wpilib.SmartDashboard.putNumber("GyroRate", self.gyro.getRate())
                 wpilib.SmartDashboard.putNumber("GyroAngle", self.gyro.getAngle())
 
-            yield from asyncio.sleep(.1)
+            yield from asyncio.sleep(.2)
 
     #@yeti.autorun_coroutine
     @asyncio.coroutine
@@ -181,10 +187,69 @@ class AdvancedCANMecanum(yeti.Module):
             last_position[0] += world_trans_x_dist
             last_position[1] += world_trans_y_dist
 
+            # Set input datastream if configured to do so
+            input_stream_updates = {}
+            if self.auto_drive_config[0]["use_tracker"]:
+                input_stream_updates["x_pos"] = last_position[0]
+            if self.auto_drive_config[0]["use_tracker"]:
+                input_stream_updates["y_pos"] = last_position[1]
+            if self.auto_drive_config[0]["use_tracker"]:
+                input_stream_updates["angle"] = last_gyro_angle
+            if len(input_stream_updates) != 0:
+                self.auto_drive_input_datastream.push(input_stream_updates)
+
+
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def auto_drive_x_config(self, config):
+        self.auto_drive_config[0].update(config)
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def auto_drive_y_config(self, config):
+        self.auto_drive_config[1].update(config)
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def auto_drive_r_config(self, config):
+        self.auto_drive_config[2].update(config)
+
+    auto_drive_enabled = False
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def enable_auto_drive(self):
+        self.auto_drive_enabled = True
+        self.start_coroutine(self.auto_drive_loop())
+
+    @asyncio.coroutine
+    @remote_coroutines.public_coroutine
+    def disable_auto_drive(self):
+        self.auto_drive_enabled = False
+
+    @asyncio.coroutine
+    def auto_drive_loop(self):
+        while self.auto_drive_enabled:
+            # This is currently a square algorithm, it should be upgraded to trapezoidal
+
+            # Get inputs and setpoints
+            input_data = self.auto_drive_input_datastream.get()
+            setpoint_data = self.auto_drive_setpoint_datastream.get()
+            current_input = [input_data.get("x_pos"), input_data.get("y_pos"), input_data.get("angle")]
+            current_setpoint = [setpoint_data.get("x_pos"), setpoint_data.get("y_pos"), setpoint_data.get("angle")]
+
+
+            assert False
+
+            asyncio.sleep(.05)
 
     @gamemode.enabled_task
     @asyncio.coroutine
     def drive_loop(self):
+
+        #Clear datastream
+        self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "clockwise_dps": 0})
 
         #Enable the gyro rate pid loop if it is initialized
         if self.gyro_initialized:
@@ -204,7 +269,7 @@ class AdvancedCANMecanum(yeti.Module):
             control_data = self.control_datastream.get()
             forward_speed = control_data.get("forward_fps", 0)
             right_speed = control_data.get("right_fps", 0)
-            clockwise_speed = control_data.get("clockwise_rps", 0)
+            clockwise_speed = control_data.get("clockwise_dps", 0)
 
             #Rotation lock enable/disable
             if self.gyro_initialized and self.GYRO_POS_LOCK_PID:
@@ -229,7 +294,7 @@ class AdvancedCANMecanum(yeti.Module):
                 self.gyro_rate_pid_controller.setSetpoint(clockwise_speed)
                 clockwise_speed_out = self.gyro_rate_pid_out * 7
             else:
-                clockwise_speed_out = clockwise_speed
+                clockwise_speed_out = clockwise_speed / 360
 
             #Inverse kinematics to get mecanum values
             front_left_out = forward_speed + clockwise_speed_out + right_speed
