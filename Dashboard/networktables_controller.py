@@ -97,6 +97,7 @@ def networktables_websocket(request):
 
     #Update periodically until the websocket is closed.
     try:
+
         while True:
             if connection["updated_data"]:
                 connection["updated_data"] = False
