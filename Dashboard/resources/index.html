@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="shortcut icon" href="/favicon.ico"/>
+
+    <title>RoboRIO WebDashboard</title>
+
+    <!-- Bootstrap core CSS -->
+    <link rel="stylesheet" href="/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/bootstrap/css/bootstrap-theme.min.css">
+
+    <link rel="stylesheet" href="/bootstrap/bootstrap-select/bootstrap-select.min.css">
+
+
+    <!-- Custom styles for this template -->
+    <link href="/dashboard.css" rel="stylesheet">
+  </head>
+
+  <body>
+
+    <nav class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+      <div class="container-fluid">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">RoboRIO WebDashboard</a>
+        </div>
+          <img src="/powered_by_robotpy.png" width="150">
+          <img src="/FIRSTvert_Reversed.gif" width="50" style="margin-left: 15px; margin-right: 15px;">
+          <h4 style="float: right; color: #9d9d9d; text-shadow: 0 -1px 0 rgba(0,0,0,.25); margin: 15px;">WebDashboard IP Address: <span id="server_ip"></span></h4>
+      </div>
+    </nav>
+
+    <div class="container-fluid" style="margin-top: 20px;">
+      <div class="row">
+        <div id="networktables-container" class="col-lg-6 col-md-6 col-sm-6">
+            <div id="networktables" class="panel panel-success">
+                <div class="panel-heading">
+                    <h2>Network Tables</h2>
+                    <div style="text-align: right; display: inline-block; float: right; margin-left: auto;">
+                      <p>WebDashboard Server: <span id="networktables-wd-status" class="label label-danger">Disconnected</span></p>
+                      <p>NetworkTables Server: <span id="networktables-nt-status" class="label label-danger">Disconnected</span></p>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <select id="networktables-select" class="selectpicker" data-style="btn-primary" onchange="networktables_set_table()">
+                          <option value="/SmartDashboard/" selected="selected">SmartDashboard</option>
+                          <option value="/LiveWindow/">LiveWindow</option>
+                          <option value="/">All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div id="networktables-block">
+                    <table id="networktables-table" class="table table-striped">
+                        <thead>
+                          <tr>
+                              <td>Entry Name</td>
+                              <td>Entry Value</td>
+                          </tr>
+                        </thead>
+                        <tbody>
+
+                        </tbody>
+                    </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/jquery.min.js"></script>
+    <script src="/bootstrap/js/bootstrap.min.js"></script>
+    <script src="/bootstrap/bootstrap-select/bootstrap-select.min.js"></script>
+    <script src="/utilities.js"></script>
+    <script src="/networktables.js"></script>
+  </body>
+</html>
