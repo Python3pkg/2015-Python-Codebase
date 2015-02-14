@@ -15,6 +15,7 @@ def run_server(port):
     app = web.Application()
     app.router.add_route("GET", "/networktables", networktables_controller.networktables_websocket)
     app.router.add_route("GET", "/netinfo", networktables_controller.networktables_websocket)
+    app.router.add_route("GET", "/camtest", networktables_controller.networktables_websocket)
     app.router.add_route("GET", "/", forward_request)
     app.router.add_static("/", file_root)
     loop = asyncio.get_event_loop()
@@ -28,4 +29,3 @@ def run_server(port):
 
 if __name__ == "__main__":
     run_server(5802)
-
