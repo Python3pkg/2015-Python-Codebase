@@ -13,7 +13,7 @@ class AdvancedElevator(yeti.Module):
 
     # The list of CAN ids for the CAN Jaguars
     # First value is assumed to be master, all others will be slaves
-    MASTER_CAN_ID = [0]
+    MASTER_CAN_ID = 14
     SLAVE_CAN_IDS = []
 
     # PID Vals

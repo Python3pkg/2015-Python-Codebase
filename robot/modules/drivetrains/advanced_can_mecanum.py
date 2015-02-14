@@ -6,12 +6,39 @@ import math
 from yeti.interfaces import gamemode, datastreams, remote_coroutines
 from yeti.wpilib_extensions import Referee
 
+
+#Helper funcs
+def threshold_value(self, value, threshold):
+    if abs(value) <= threshold:
+        value = 0
+    return value
+
+
+def signing_square(self, value):
+    if value < 0:
+        return value ** 2
+    else:
+        return -(value ** 2)
+
+
 class AdvancedCANMecanum(yeti.Module):
     """
     An advanced mecanum controller, taking input from the 'drivetrain_control' datastream
     and outputting to CAN Jaguars in closed-loop control mode.
 
     """
+
+
+    ####################################
+    # JOYSTICK CONTROLLER CONF
+
+    #Maximum values for joystick loop to output
+
+    MAX_Y_INPUT_FPS = 10
+    MAX_X_INPUT_FPS = 10
+    MAX_ROT_INPUT_DPS = 360
+
+    SQUARE_INPUTS = True
 
     ####################################
     # MOTOR CONTROLLER CONF
@@ -59,6 +86,9 @@ class AdvancedCANMecanum(yeti.Module):
         #Initialize the Referee for the module.
         self.referee = Referee(self)
 
+        self.joystick = wpilib.Joystick(0)
+        self.referee.watch(self.joystick)
+
         #Setup motor controllers
         self.motor_controllers = list()
         for motor_id in self.CAN_IDS:
@@ -78,8 +108,7 @@ class AdvancedCANMecanum(yeti.Module):
         self.auto_drive_input_datastream = datastreams.get_datastream("auto_drive_input")
 
         self.auto_drive_config = [{"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True},
-                                  {"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True},
-                                  {"speed": 360, "acceleration": 360, "tolerance": 3, "use_tracker": True}]
+                                  {"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True}]
 
         if self.USE_GYRO:
             self.gyro_init()
@@ -191,14 +220,10 @@ class AdvancedCANMecanum(yeti.Module):
             input_stream_updates = {}
             if self.auto_drive_config[0]["use_tracker"]:
                 input_stream_updates["x_pos"] = last_position[0]
-            if self.auto_drive_config[0]["use_tracker"]:
+            if self.auto_drive_config[1]["use_tracker"]:
                 input_stream_updates["y_pos"] = last_position[1]
-            if self.auto_drive_config[0]["use_tracker"]:
-                input_stream_updates["angle"] = last_gyro_angle
             if len(input_stream_updates) != 0:
                 self.auto_drive_input_datastream.push(input_stream_updates)
-
-
 
     @asyncio.coroutine
     @remote_coroutines.public_coroutine
@@ -209,11 +234,6 @@ class AdvancedCANMecanum(yeti.Module):
     @remote_coroutines.public_coroutine
     def auto_drive_y_config(self, config):
         self.auto_drive_config[1].update(config)
-
-    @asyncio.coroutine
-    @remote_coroutines.public_coroutine
-    def auto_drive_r_config(self, config):
-        self.auto_drive_config[2].update(config)
 
     auto_drive_enabled = False
 
@@ -236,13 +256,43 @@ class AdvancedCANMecanum(yeti.Module):
             # Get inputs and setpoints
             input_data = self.auto_drive_input_datastream.get()
             setpoint_data = self.auto_drive_setpoint_datastream.get()
-            current_input = [input_data.get("x_pos"), input_data.get("y_pos"), input_data.get("angle")]
-            current_setpoint = [setpoint_data.get("x_pos"), setpoint_data.get("y_pos"), setpoint_data.get("angle")]
+            current_input = [input_data.get("x_pos"), input_data.get("y_pos")]
+            current_setpoint = [setpoint_data.get("x_pos"), setpoint_data.get("y_pos")]
 
 
             assert False
 
             asyncio.sleep(.05)
+
+
+
+    @gamemode.teleop_task
+    @asyncio.coroutine
+    def joystick_loop(self):
+        while gamemode.is_teleop():
+            forward_percentage = -self.joystick.getY()
+            right_percentage = self.joystick.getX()
+            clockwise_percentage = self.joystick.getZ()
+
+            #Threshold values
+            forward_percentage = threshold_value(forward_percentage, .10)
+            right_percentage = threshold_value(right_percentage, .10)
+            clockwise_percentage = threshold_value(clockwise_percentage, .15)
+
+            if self.SQUARE_INPUTS:
+                forward_percentage = signing_square(forward_percentage)
+                right_percentage = signing_square(right_percentage)
+                clockwise_percentage = signing_square(clockwise_percentage)
+
+            #Scale to real-world measurments
+            forward_fps = forward_percentage * self.MAX_Y_INPUT_FPS
+            right_fps = right_percentage * self.MAX_X_INPUT_FPS
+            clockwise_dps = clockwise_percentage * self.MAX_ROT_INPUT_DPS
+
+            #Send values to drive loop
+            self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "clockwise_dps": clockwise_dps})
+
+            yield from asyncio.sleep(.05)
 
     @gamemode.enabled_task
     @asyncio.coroutine
