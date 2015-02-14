@@ -144,3 +144,12 @@ def networktables_websocket_listener(ws):
             return
         data = json.loads(jdata)
         root_table.pushData(data["name"], data["value"])
+
+def networktables_websocket_writer(ws):
+    while True:
+        try:
+            jdata = yield from ws.write_str()
+        except Exception:
+            return
+        data = json.loads(jdata)
+        root_table.pushData(data["name"], data["value"])
