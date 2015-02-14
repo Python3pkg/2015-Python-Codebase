@@ -5,8 +5,7 @@ from aiohttp import web, errors as weberrors
 from threading import RLock
 from copy import deepcopy
 
-
-ip_address = "127.0.0.1"
+server_address = "0.0.0.0"
 
 initialized_networktables = False
 
@@ -60,11 +59,11 @@ def watch_table(key):
         new_table.addSubTableListener(subtable_listener)
         new_table.addTableListener(val_listener, True)
 
-def setup_networktables(ip=ip_address):
+def setup_networktables(server=server_address):
     global root_table, table_data, initialized_networktables
     if initialized_networktables:
         return
-    NetworkTable.setIPAddress(ip)
+    NetworkTable.setIPAddress(server)
     NetworkTable.setClientMode()
     NetworkTable.initialize()
     root_table = NetworkTable.getTable("")
