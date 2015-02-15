@@ -8,17 +8,42 @@ from yeti.wpilib_extensions import Referee
 
 
 #Helper funcs
-def threshold_value(self, value, threshold):
+def threshold_value(value, threshold):
     if abs(value) <= threshold:
         value = 0
     return value
 
 
-def signing_square(self, value):
+def signing_square(value):
     if value < 0:
         return value ** 2
     else:
         return -(value ** 2)
+
+def trapezoid_motion_profile(setpoint, position, speed, max_accel, max_speed):
+    """
+
+    """
+    # Start by calculating down ramp at end, at maximum deceleration
+    position_delta = setpoint - position
+
+    # This is the speed that we would have to be travelling at this moment if we were
+    # to continually decelerate -- reaching the setpoint exactly when speed is zero.
+    #
+    # This is absolute speed, still need to calculate direction.
+    projected_speed = math.sqrt(2 * max_accel * abs(position_delta))
+
+    # Now cap the previous value to the max_speed specified
+    projected_speed = min(projected_speed, max_speed)
+
+    # Calculate speed delta (Again forgetting direction of speed)
+    speed_delta = projected_speed - abs(speed)
+
+
+
+
+    # Now limit the speed to
+
 
 
 class AdvancedCANMecanum(yeti.Module):
@@ -48,7 +73,7 @@ class AdvancedCANMecanum(yeti.Module):
     #Rear Left
     #Front Right
     #Rear Right
-    CAN_IDS = [13, 11, 12, 10]
+    CAN_IDS = [12, 14, 11, 13]
 
     #Jagur PID Values
     JAG_P = 1.000
@@ -64,7 +89,7 @@ class AdvancedCANMecanum(yeti.Module):
     # GYRO CONF
 
     #Use Gyro
-    USE_GYRO = True
+    USE_GYRO = False
     gyro_initialized = False
 
     GYRO_RATE_PID = False
@@ -260,6 +285,8 @@ class AdvancedCANMecanum(yeti.Module):
             current_setpoint = [setpoint_data.get("x_pos"), setpoint_data.get("y_pos")]
 
 
+
+
             assert False
 
             asyncio.sleep(.05)
@@ -270,9 +297,9 @@ class AdvancedCANMecanum(yeti.Module):
     @asyncio.coroutine
     def joystick_loop(self):
         while gamemode.is_teleop():
-            forward_percentage = -self.joystick.getY()
-            right_percentage = self.joystick.getX()
-            clockwise_percentage = self.joystick.getZ()
+            forward_percentage = self.joystick.getY()
+            right_percentage = -self.joystick.getX()
+            clockwise_percentage = -self.joystick.getZ()
 
             #Threshold values
             forward_percentage = threshold_value(forward_percentage, .10)

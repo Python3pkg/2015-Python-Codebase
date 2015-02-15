@@ -7,13 +7,13 @@ from yeti.interfaces import gamemode, datastreams
 
 
 #Helper funcs
-def threshold_value(self, value, threshold):
+def threshold_value(value, threshold):
     if abs(value) <= threshold:
         value = 0
     return value
 
 
-def signing_square(self, value):
+def signing_square(value):
     if value < 0:
         return value ** 2
     else:
@@ -31,7 +31,7 @@ class BasicCANMecanum(yeti.Module):
     #Rear Left
     #Front Right
     #Rear Right
-    CAN_IDS = [13, 11, 12, 10]
+    CAN_IDS = [12, 14, 11, 13]
 
     ####################################
     # JOYSTICK CONTROLLER CONF

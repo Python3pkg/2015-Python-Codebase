@@ -10,8 +10,8 @@ class BasicElevator(yeti.Module):
     def module_init(self):
         self.referee = Referee(self)
 
-        self.lift_jag = wpilib.CANJaguar(14)
-        self.lift_jag.setPercentMode()
+        self.lift_jag = wpilib.CANJaguar(10)
+        self.lift_jag.setVoltageMode()
         self.referee.watch(self.lift_jag)
 
         self.joystick = wpilib.Joystick(1)
@@ -20,7 +20,9 @@ class BasicElevator(yeti.Module):
     @asyncio.coroutine
     @gamemode.teleop_task
     def manual_elevator(self):
+        self.lift_jag.enableControl()
         while gamemode.is_teleop():
-            value = self.joystick.getRawAxis(1)
+            value = self.joystick.getRawAxis(1) * 12
             self.lift_jag.set(value)
             yield from asyncio.sleep(.05)
+        self.lift_jag.disableControl()
