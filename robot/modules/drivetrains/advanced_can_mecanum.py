@@ -20,30 +20,109 @@ def signing_square(value):
     else:
         return -(value ** 2)
 
-def trapezoid_motion_profile(setpoint, position, speed, max_accel, max_speed):
+# This code is directly ported from team 254's 2011 ContinuousAccelFilter
+
+
+def continuous_accel_filter(distance_to_target, current_vel, goal_vel, max_accel, max_vel, delta_time):
+
+    output_velocity = current_vel
+
+    start_accel_time, start_accel, const_time, end_accel_time, end_accel = calculate_motion_profile(distance_to_target, current_vel, goal_vel, max_accel, max_vel)
+
+    time_left = delta_time
+    output_velocity += start_accel * min(start_accel_time, time_left)
+    if start_accel_time < time_left:
+        time_left -= start_accel_time
+        output_velocity += start_accel * min(const_time, time_left)
+        if const_time < time_left:
+            time_left -= const_time
+            output_velocity += start_accel * min(end_accel_time, time_left)
+            if end_accel_time < time_left:
+                time_left -= end_accel_time
+                output_velocity += end_accel * time_left
+
+    return output_velocity
+
+
+def calculate_motion_profile(distance_left, current_vel, goal_vel, max_accel, max_vel):
+    """
+    Does magical stuff, still figuring it out myself.
+
+    :param distance_left: The distance left to traverse
+    :param current_vel: The current velocity of the robot
+    :param goal_vel: The goal velocity of the robot
+    :param max_accel: The maximum desired acceleration of the robot
+    :param max_vel: The maximum desired velocity of the robot
     """
 
-    """
-    # Start by calculating down ramp at end, at maximum deceleration
-    position_delta = setpoint - position
+    # Return variables
+    start_accel_time = 0
+    start_accel_rate = 0
+    const_time = 0
+    end_accel_time = 0
+    end_accel_rate = 0
 
-    # This is the speed that we would have to be travelling at this moment if we were
-    # to continually decelerate -- reaching the setpoint exactly when speed is zero.
-    #
-    # This is absolute speed, still need to calculate direction.
-    projected_speed = math.sqrt(2 * max_accel * abs(position_delta))
+    if distance_left > 0:
+        start_accel_rate = max_accel
 
-    # Now cap the previous value to the max_speed specified
-    projected_speed = min(projected_speed, max_speed)
+    elif distance_left == 0:
+        # We are at the setpoint, so zero everything and return
+        start_accel_time = 0
+        start_accel_rate = 0
+        const_time = 0
+        end_accel_time = 0
+        end_accel_rate = 0
+        return start_accel_time, \
+            start_accel_rate, \
+            const_time, \
+            end_accel_time, \
+            end_accel_rate
 
-    # Calculate speed delta (Again forgetting direction of speed)
-    speed_delta = projected_speed - abs(speed)
+    else:
+        start_accel_time, \
+            start_accel_rate, \
+            const_time, \
+            end_accel_time, \
+            end_accel_rate = calculate_motion_profile(-distance_left, -current_vel, -goal_vel, max_accel, max_vel)
+        start_accel_rate *= -1
+        end_accel_rate *= -1
+        return start_accel_time, \
+            start_accel_rate, \
+            const_time, \
+            end_accel_time, \
+            end_accel_rate
 
+    # The velocity I would be travelling if I were to accelerate at max acceleration until there were no distance left
+    max_accel_velocity = distance_left * 2 * abs(start_accel_rate) + current_vel ** 2
 
+    if max_accel_velocity > 0:
+        max_accel_velocity = math.sqrt(max_accel_velocity)
+    else:
+        max_accel_velocity = -math.sqrt(-max_accel_velocity)
 
+    if max_accel_velocity > goal_vel:
+        end_accel_rate = -max_accel
+    else:
+        end_accel_rate = max_accel
 
-    # Now limit the speed to
+    # This formula is shrouded in magic and mystery. I cannot seem to understand how it does it, but it does.
+    # This calculates the top speed at which we can go given the distance and acceleration constraints.
+    top_vel = math.sqrt((distance_left + (current_vel ** 2) / (2.0 * start_accel_rate) + (goal_vel ** 2) / (2.0 * end_accel_rate)) / (-1.0 / (2.0 * end_accel_rate) + 1.0 / (2.0 * start_accel_rate)));
 
+    # If top_vel is too fast, we now know how long we get to accelerate for and how long to go at constant velocity
+    if top_vel > max_vel:
+        start_accel_time = (max_vel - current_vel) / max_accel
+        const_time = (distance_left + (goal_vel ** 2 - max_vel ** 2) / (2*max_accel)) / max_vel
+    else:
+        start_accel_time = (top_vel - current_vel) / start_accel_rate
+
+    return start_accel_time, \
+        start_accel_rate, \
+        const_time, \
+        end_accel_time, \
+        end_accel_rate
+
+# End ported code
 
 
 class AdvancedCANMecanum(yeti.Module):
@@ -53,11 +132,12 @@ class AdvancedCANMecanum(yeti.Module):
 
     """
 
+    SIMULATE_IO = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
 
-    #Maximum values for joystick loop to output
+    # Maximum values for joystick loop to output
 
     MAX_Y_INPUT_FPS = 10
     MAX_X_INPUT_FPS = 10
@@ -68,72 +148,78 @@ class AdvancedCANMecanum(yeti.Module):
     ####################################
     # MOTOR CONTROLLER CONF
 
-    #CAN IDS for the Drivetrain Jaguars in the following order:
-    #Front Left
-    #Rear Left
-    #Front Right
-    #Rear Right
+    # CAN IDS for the Drivetrain Jaguars in the following order:
+    # Front Left
+    # Rear Left
+    # Front Right
+    # Rear Right
     CAN_IDS = [12, 14, 11, 13]
 
-    #Jagur PID Values
+    # Jagur PID Values
     JAG_P = 1.000
     JAG_I = 0.005
     JAG_D = 0.000
 
     ENCODER_TICKS_PER_ROTATION = 360
 
-    #Multiply FPS by this value to get RPM with 6" wheels
+    # Multiply FPS by this value to get RPM with 6" wheels
     FPS_TO_RPM = 60/(.5 * math.pi)
 
     #######################################
     # GYRO CONF
 
-    #Use Gyro
-    USE_GYRO = False
+    # Use Gyro
+    USE_GYRO = True
     gyro_initialized = False
 
     GYRO_RATE_PID = False
-    #Gyro rate PID Values
+    # Gyro rate PID Values
+
     GYRO_RATE_P = 0.500
-    GYRO_RATE_I = 0.000
+    GYRO_RATE_I = 0.100
     GYRO_RATE_D = 0.000
 
-    GYRO_RATE_PID_MAX_OUT = 1
-
     GYRO_POS_LOCK_PID = False
-    #Gyro pos lock PID Values
-    GYRO_POS_LOCK_P = 0.250
-    GYRO_POS_LOCK_I = 0.010
+    # Gyro pos lock PID Values
+    GYRO_POS_LOCK_P = 1.000
+    GYRO_POS_LOCK_I = 0.100
     GYRO_POS_LOCK_D = 0.000
 
 
     def module_init(self):
-        #Initialize the Referee for the module.
+        # Initialize the Referee for the module.
         self.referee = Referee(self)
 
         self.joystick = wpilib.Joystick(0)
         self.referee.watch(self.joystick)
 
-        #Setup motor controllers
-        self.motor_controllers = list()
-        for motor_id in self.CAN_IDS:
-            controller = wpilib.CANJaguar(motor_id)
-            controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
-            self.referee.watch(controller)
-            self.motor_controllers.append(controller)
+        if self.SIMULATE_IO:
+            self.motor_controllers = list()
+            for motor_id in range(4):
+                controller = wpilib.Talon(motor_id)
+                self.referee.watch(controller)
+                self.motor_controllers.append(controller)
+        else:
+            # Setup motor controllers
+            self.motor_controllers = list()
+            for motor_id in self.CAN_IDS:
+                controller = wpilib.CANJaguar(motor_id)
+                controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
+                self.referee.watch(controller)
+                self.motor_controllers.append(controller)
 
-        #Start control datastream
-        #Values are:
-        # forward_fps -- desired forward speed in feet-per-second
-        # right_fps -- desired right strafe speed in feet-per-second
-        # clockwise_dps -- desired clockwise rotational speed in degrees-per-second
+        # Start control datastream
+        # Values are:
+        #  forward_fps -- desired forward speed in feet-per-second
+        #  right_fps -- desired right strafe speed in feet-per-second
+        #  clockwise_dps -- desired clockwise rotational speed in degrees-per-second
         self.control_datastream = datastreams.get_datastream("drivetrain_control")
 
         self.auto_drive_setpoint_datastream = datastreams.get_datastream("auto_drive_setpoint")
         self.auto_drive_input_datastream = datastreams.get_datastream("auto_drive_input")
 
-        self.auto_drive_config = [{"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True},
-                                  {"speed": 10, "acceleration": 10, "tolerance": .1, "use_tracker": True}]
+        self.auto_drive_config = {"x_speed": 5, "x_acceleration": 15, "x_tolerance": .1, "x_use_tracker": True,
+                                  "y_speed": 5, "y_acceleration": 15, "y_tolerance": .1, "y_use_tracker": True}
 
         if self.USE_GYRO:
             self.gyro_init()
@@ -156,7 +242,8 @@ class AdvancedCANMecanum(yeti.Module):
 
                 self.gyro_rate_pid_out = val
 
-            self.gyro_rate_pid_controller = wpilib.PIDController(self.GYRO_RATE_P, self.GYRO_RATE_I, self.GYRO_RATE_D, rate_pid_source, rate_pid_out)
+            self.gyro_rate_pid_controller = wpilib.PIDController(self.GYRO_RATE_P, self.GYRO_RATE_I, self.GYRO_RATE_D, 1, rate_pid_source, rate_pid_out)
+            self.gyro_rate_pid_controller.setOutputRange(-360, 360)
 
         if self.GYRO_POS_LOCK_PID:
             #Setup rotational lock PID controller
@@ -167,6 +254,7 @@ class AdvancedCANMecanum(yeti.Module):
                 self.gyro_pos_lock_pid_out = val
 
             self.gyro_pos_lock_pid_controller = wpilib.PIDController(self.GYRO_POS_LOCK_P, self.GYRO_POS_LOCK_I, self.GYRO_POS_LOCK_D, pos_pid_source, pos_pid_out)
+            self.gyro_pos_lock_pid_controller.setOutputRange(-360, 360)
 
         #Set initialized flag
         self.gyro_initialized = True
@@ -178,9 +266,10 @@ class AdvancedCANMecanum(yeti.Module):
             i = 0
             for canjag in self.motor_controllers:
                 wpilib.SmartDashboard.putNumber(str(i) + "-CanJagGet", canjag.get())
-                wpilib.SmartDashboard.putNumber(str(i) + "-CanJagVolts", canjag.getOutputVoltage())
-                wpilib.SmartDashboard.putNumber(str(i) + "-CanJagCurrent", canjag.getOutputCurrent())
-                wpilib.SmartDashboard.putNumber(str(i) + "-CanJagSpeed", canjag.getSpeed())
+                if not self.SIMULATE_IO:
+                    wpilib.SmartDashboard.putNumber(str(i) + "-CanJagVolts", canjag.getOutputVoltage())
+                    wpilib.SmartDashboard.putNumber(str(i) + "-CanJagCurrent", canjag.getOutputCurrent())
+                    wpilib.SmartDashboard.putNumber(str(i) + "-CanJagSpeed", canjag.getSpeed())
                 i += 1
             if self.gyro_initialized:
                 wpilib.SmartDashboard.putNumber("GyroRate", self.gyro.getRate())
@@ -188,7 +277,7 @@ class AdvancedCANMecanum(yeti.Module):
 
             yield from asyncio.sleep(.2)
 
-    #@yeti.autorun_coroutine
+    @yeti.autorun_coroutine
     @asyncio.coroutine
     def tracking_loop(self):
         last_position = [0, 0]
@@ -204,15 +293,23 @@ class AdvancedCANMecanum(yeti.Module):
             last_cycle_timestamp = current_cycle_timestamp
 
             # Track wheel movement and get distances and average speeds
-            current_wheel_positions = []
-            current_wheel_positions[0] = self.motor_controllers[0].getPosition()
-            current_wheel_positions[1] = self.motor_controllers[1].getPosition()
-            current_wheel_positions[2] = -self.motor_controllers[2].getPosition()
-            current_wheel_positions[3] = -self.motor_controllers[3].getPosition()
+            if self.SIMULATE_IO:
+                average_wheel_speeds = [0, 0, 0, 0]
+                average_wheel_speeds[0] = self.motor_controllers[0].get() * 14
+                average_wheel_speeds[1] = self.motor_controllers[1].get() * 14
+                average_wheel_speeds[2] = -self.motor_controllers[2].get() * 14
+                average_wheel_speeds[3] = -self.motor_controllers[3].get() * 14
 
-            delta_wheel_positions = [c - l for c, l in zip(current_wheel_positions, last_wheel_positions)]
-            last_wheel_positions = current_wheel_positions
-            average_wheel_speeds = [d * delta_time for d in delta_wheel_positions]
+            else:
+                current_wheel_positions = [0, 0, 0, 0]
+                current_wheel_positions[0] = self.motor_controllers[0].getPosition()
+                current_wheel_positions[1] = self.motor_controllers[1].getPosition()
+                current_wheel_positions[2] = -self.motor_controllers[2].getPosition()
+                current_wheel_positions[3] = -self.motor_controllers[3].getPosition()
+
+                delta_wheel_positions = [c - l for c, l in zip(current_wheel_positions, last_wheel_positions)]
+                last_wheel_positions = current_wheel_positions
+                average_wheel_speeds = [d * delta_time for d in delta_wheel_positions]
 
             # Get gyro state and get average angle
             current_gyro_angle = self.gyro.getAngle()
@@ -241,55 +338,89 @@ class AdvancedCANMecanum(yeti.Module):
             last_position[0] += world_trans_x_dist
             last_position[1] += world_trans_y_dist
 
+            wpilib.SmartDashboard.putNumber("tracked_x_pos", last_position[0])
+            wpilib.SmartDashboard.putNumber("tracked_y_pos", last_position[1])
+
             # Set input datastream if configured to do so
             input_stream_updates = {}
-            if self.auto_drive_config[0]["use_tracker"]:
+            if self.auto_drive_config["x_use_tracker"]:
                 input_stream_updates["x_pos"] = last_position[0]
-            if self.auto_drive_config[1]["use_tracker"]:
+            if self.auto_drive_config["y_use_tracker"]:
                 input_stream_updates["y_pos"] = last_position[1]
             if len(input_stream_updates) != 0:
                 self.auto_drive_input_datastream.push(input_stream_updates)
-
-    @asyncio.coroutine
-    @remote_coroutines.public_coroutine
-    def auto_drive_x_config(self, config):
-        self.auto_drive_config[0].update(config)
-
-    @asyncio.coroutine
-    @remote_coroutines.public_coroutine
-    def auto_drive_y_config(self, config):
-        self.auto_drive_config[1].update(config)
 
     auto_drive_enabled = False
 
     @asyncio.coroutine
     @remote_coroutines.public_coroutine
-    def enable_auto_drive(self):
-        self.auto_drive_enabled = True
-        self.start_coroutine(self.auto_drive_loop())
+    def auto_drive_enable(self):
+        if not self.auto_drive_enabled:
+            self.auto_drive_enabled = True
+            self.start_coroutine(self.auto_drive_loop())
 
     @asyncio.coroutine
     @remote_coroutines.public_coroutine
-    def disable_auto_drive(self):
+    def auto_drive_disable(self):
         self.auto_drive_enabled = False
 
     @asyncio.coroutine
     def auto_drive_loop(self):
+        last_input_x = 0
+        last_input_y = 0
+        last_cycle_time = wpilib.Timer.getFPGATimestamp()
+
         while self.auto_drive_enabled:
-            # This is currently a square algorithm, it should be upgraded to trapezoidal
+
+            current_cycle_time = wpilib.Timer.getFPGATimestamp()
+            delta_time = current_cycle_time - last_cycle_time
+            last_cycle_time = current_cycle_time
 
             # Get inputs and setpoints
             input_data = self.auto_drive_input_datastream.get()
             setpoint_data = self.auto_drive_setpoint_datastream.get()
-            current_input = [input_data.get("x_pos"), input_data.get("y_pos")]
-            current_setpoint = [setpoint_data.get("x_pos"), setpoint_data.get("y_pos")]
 
+            max_speed_x = self.auto_drive_config["x_speed"]
+            max_speed_y = self.auto_drive_config["y_speed"]
 
+            max_accel_x = self.auto_drive_config["x_acceleration"]
+            max_accel_y = self.auto_drive_config["y_acceleration"]
 
+            x_tolerance = self.auto_drive_config["x_tolerance"]
+            y_tolerance = self.auto_drive_config["y_tolerance"]
 
-            assert False
+            current_input_x = input_data.get("x_pos")
+            current_input_y = input_data.get("y_pos")
 
-            asyncio.sleep(.05)
+            current_setpoint_x = setpoint_data.get("x_pos", 0)
+            current_setpoint_y = setpoint_data.get("y_pos", 0)
+
+            x_delta = current_setpoint_x - current_input_x
+            y_delta = current_setpoint_y - current_input_y
+
+            x_avg_speed = (current_input_x - last_input_x) / delta_time
+            y_avg_speed = (current_input_y - last_input_y) / delta_time
+
+            if abs(x_delta) > x_tolerance:
+                x_speed_out = continuous_accel_filter(x_delta, x_avg_speed, 0, max_accel_x, max_speed_x, delta_time)
+            else:
+                x_speed_out = 0
+
+            if abs(y_delta) > y_tolerance:
+                y_speed_out = continuous_accel_filter(y_delta, y_avg_speed, 0, max_accel_y, max_speed_y, delta_time)
+            else:
+                y_speed_out = 0
+
+            last_input_x = current_input_x
+            last_input_y = current_input_y
+
+            # Send values to drive loop
+            self.control_datastream.push({"forward_fps": y_speed_out, "right_fps": x_speed_out, "clockwise_dps": 0})
+
+            yield from asyncio.sleep(.1)
+
+        self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "clockwise_dps": 0})
+
 
 
 
@@ -336,8 +467,9 @@ class AdvancedCANMecanum(yeti.Module):
                 self.gyro_pos_lock_pid_controller.disable()
 
         #Enable CAN Jaguars
-        for controller in self.motor_controllers:
-            controller.enableControl()
+        if not self.SIMULATE_IO:
+            for controller in self.motor_controllers:
+                controller.enableControl()
 
         rotation_locked = False
 
@@ -346,11 +478,11 @@ class AdvancedCANMecanum(yeti.Module):
             control_data = self.control_datastream.get()
             forward_speed = control_data.get("forward_fps", 0)
             right_speed = control_data.get("right_fps", 0)
-            clockwise_speed = control_data.get("clockwise_dps", 0)
+            clockwise_speed_in = control_data.get("clockwise_dps", 0)
 
             #Rotation lock enable/disable
             if self.gyro_initialized and self.GYRO_POS_LOCK_PID:
-                if clockwise_speed == 0:
+                if clockwise_speed_in == 0:
                     if not rotation_locked:
                         rotation_locked = True
                         self.gyro_pos_lock_pid_controller.setSetpoint(self.gyro.getAngle())
@@ -368,33 +500,48 @@ class AdvancedCANMecanum(yeti.Module):
             if self.gyro_initialized and self.GYRO_POS_LOCK_PID and rotation_locked:
                 clockwise_speed_out = self.gyro_pos_lock_pid_out
             elif self.gyro_initialized and self.GYRO_RATE_PID:
-                self.gyro_rate_pid_controller.setSetpoint(clockwise_speed)
-                clockwise_speed_out = self.gyro_rate_pid_out * 7
+                self.gyro_rate_pid_controller.setSetpoint(clockwise_speed_in)
+                clockwise_speed_out = self.gyro_rate_pid_out
             else:
-                clockwise_speed_out = clockwise_speed / 360
+                clockwise_speed_out = clockwise_speed_in
 
             #Inverse kinematics to get mecanum values
-            front_left_out = forward_speed + clockwise_speed_out + right_speed
-            rear_left_out = forward_speed + clockwise_speed_out - right_speed
-            front_right_out = forward_speed - clockwise_speed_out - right_speed
-            rear_right_out = forward_speed - clockwise_speed_out + right_speed
 
-            #convert from fps to rpm
-            front_left_out *= self.FPS_TO_RPM
-            front_right_out *= self.FPS_TO_RPM
-            rear_left_out *= self.FPS_TO_RPM
-            rear_right_out *= self.FPS_TO_RPM
+            # This is abs(x_dist) + abs(y_dist), where x_dist and y_dist are the x and y distances of the
+            # mecanum wheels from the center of mass of the robot. x_dist is 12" and y_dist is 15", so
+            # the result is 27", which equals 2.25'. This is the multiplier for a clockwise speed measured
+            # in radians, so we multiply it by pi/180 to get the multiplier for a clockwise speed measured
+            # in degrees.
+            rot_scale = 0.03927
+
+            front_left_out = forward_speed + right_speed + (clockwise_speed_out * rot_scale)
+            rear_left_out = forward_speed - right_speed + (clockwise_speed_out * rot_scale)
+            front_right_out = forward_speed - right_speed - (clockwise_speed_out * rot_scale)
+            rear_right_out = forward_speed + right_speed - (clockwise_speed_out * rot_scale)
+
 
             #Send to motors.
-            self.motor_controllers[0].set(front_left_out)
-            self.motor_controllers[1].set(rear_left_out)
-            self.motor_controllers[2].set(-front_right_out)
-            self.motor_controllers[3].set(-rear_right_out)
+            if self.SIMULATE_IO:
+                self.motor_controllers[0].set(front_left_out/14)
+                self.motor_controllers[1].set(rear_left_out/14)
+                self.motor_controllers[2].set(-front_right_out/14)
+                self.motor_controllers[3].set(-rear_right_out/14)
+            else:
+                #convert from fps to rpm
+                front_left_out *= self.FPS_TO_RPM
+                front_right_out *= self.FPS_TO_RPM
+                rear_left_out *= self.FPS_TO_RPM
+                rear_right_out *= self.FPS_TO_RPM
+
+                self.motor_controllers[0].set(front_left_out)
+                self.motor_controllers[1].set(rear_left_out)
+                self.motor_controllers[2].set(-front_right_out)
+                self.motor_controllers[3].set(-rear_right_out)
 
             #Save values to smartdashboard
             wpilib.SmartDashboard.putNumber("forward_fps", forward_speed)
             wpilib.SmartDashboard.putNumber("right_fps", right_speed)
-            wpilib.SmartDashboard.putNumber("clockwise_speed", clockwise_speed)
+            wpilib.SmartDashboard.putNumber("clockwise_speed", clockwise_speed_in)
             wpilib.SmartDashboard.putNumber("clockwise_speed_out", clockwise_speed_out)
 
             #Pause for a moment to let the rest of the code run
@@ -408,8 +555,9 @@ class AdvancedCANMecanum(yeti.Module):
                 self.gyro_pos_lock_pid_controller.disable()
 
         #Disable CAN Jaguars.
-        for controller in self.motor_controllers:
-            controller.disableControl()
+        if not self.SIMULATE_IO:
+            for controller in self.motor_controllers:
+                controller.disableControl()
 
     def module_deinit(self):
         if self.gyro_initialized:
