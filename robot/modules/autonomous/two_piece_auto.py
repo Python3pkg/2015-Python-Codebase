@@ -12,7 +12,7 @@ class TwoPieceAuto(yeti.Module):
 
     def module_init(self):
         self.drivetrain_control_datastream = datastreams.get_datastream("drivetrain_control")
-        self.drivetrain_state_datastream = datastreams.get_datastream("drivetrain_state")
+        self.drivetrain_setpoint_datastream = datastreams.get_datastream("auto_drive_setpoint")
 
     def check_mode(self):
         if not gamemode.is_autonomous():
@@ -29,23 +29,21 @@ class TwoPieceAuto(yeti.Module):
             self.check_mode()
             yield from call_public_coroutine("elevator_goto_home")
             self.check_mode()
-
-            # Drive around container
-            yield from call_public_coroutine("drivetrain_start_tracking")
-
-            # Drive sideways
-            SIDEWAYS_DISTANCE = 3
-            while gamemode.is_autonomous():
-                current_state_data = self.drivetrain_state_datastream.get()
-                # This is formatted as a tuple of (position x, position y, angle)
-                position = current_state_data.get("drivetrain_position", 0)
-                self.drivetrain_control_datastream.push({"forward_fps": 0, "right_fps": -5, "clockwise_rps": 0})
-
-
-            #
-
-
-
+            #Drive around tote
+            yield from call_public_coroutine("auto_drive_enable")
+            self.logger.info("Drive phase 1")
+            self.drivetrain_setpoint_datastream.push({"x_pos": 3})
+            yield from call_public_coroutine("auto_drive_wait_for_x")
+            self.check_mode()
+            self.logger.info("Drive phase 2")
+            self.drivetrain_setpoint_datastream.push({"y_pos": 3})
+            yield from call_public_coroutine("auto_drive_wait_for_y")
+            self.check_mode()
+            #Drive into auto zone
+            self.logger.info("Drive phase 3")
+            self.drivetrain_setpoint_datastream.push({"x_pos": -10})
+            yield from call_public_coroutine("auto_drive_wait_for_x")
+            yield from call_public_coroutine("auto_drive_disable")
             while gamemode.is_autonomous():
                 yield from asyncio.sleep(.5)
         except EndOfAutoException:

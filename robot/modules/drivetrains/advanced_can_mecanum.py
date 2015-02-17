@@ -33,7 +33,6 @@ def continuous_accel_filter(distance_to_target, current_vel, goal_vel, max_accel
     output_velocity += start_accel * min(start_accel_time, time_left)
     if start_accel_time < time_left:
         time_left -= start_accel_time
-        output_velocity += start_accel * min(const_time, time_left)
         if const_time < time_left:
             time_left -= const_time
             output_velocity += start_accel * min(end_accel_time, time_left)
@@ -132,7 +131,7 @@ class AdvancedCANMecanum(yeti.Module):
 
     """
 
-    SIMULATE_IO = True
+    SIMULATE_IO = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -169,14 +168,14 @@ class AdvancedCANMecanum(yeti.Module):
     # GYRO CONF
 
     # Use Gyro
-    USE_GYRO = True
+    USE_GYRO = False
     gyro_initialized = False
 
     GYRO_RATE_PID = False
     # Gyro rate PID Values
 
-    GYRO_RATE_P = 0.500
-    GYRO_RATE_I = 0.100
+    GYRO_RATE_P = 0.100
+    GYRO_RATE_I = 0.000
     GYRO_RATE_D = 0.000
 
     GYRO_POS_LOCK_PID = False
@@ -218,8 +217,8 @@ class AdvancedCANMecanum(yeti.Module):
         self.auto_drive_setpoint_datastream = datastreams.get_datastream("auto_drive_setpoint")
         self.auto_drive_input_datastream = datastreams.get_datastream("auto_drive_input")
 
-        self.auto_drive_config = {"x_speed": 5, "x_acceleration": 15, "x_tolerance": .1, "x_use_tracker": True,
-                                  "y_speed": 5, "y_acceleration": 15, "y_tolerance": .1, "y_use_tracker": True}
+        self.auto_drive_config = {"x_speed": 10, "x_acceleration": 15, "x_tolerance": .1, "x_use_tracker": True,
+                                  "y_speed": 10, "y_acceleration": 15, "y_tolerance": .1, "y_use_tracker": True}
 
         if self.USE_GYRO:
             self.gyro_init()
@@ -277,7 +276,14 @@ class AdvancedCANMecanum(yeti.Module):
 
             yield from asyncio.sleep(.2)
 
-    @yeti.autorun_coroutine
+    tracking_reset = True
+
+    @remote_coroutines.public_coroutine
+    def reset_tracking(self):
+        self.tracking_reset = False
+
+
+    #@yeti.autorun_coroutine
     @asyncio.coroutine
     def tracking_loop(self):
         last_position = [0, 0]
@@ -288,6 +294,11 @@ class AdvancedCANMecanum(yeti.Module):
         last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
         while True:
             yield from asyncio.sleep(.05)
+            if self.tracking_reset:
+                last_position = [0, 0]
+                self.gyro.reset()
+                self.tracking_reset = False
+                yield from asyncio.sleep(.05)
             current_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
             delta_time = current_cycle_timestamp - last_cycle_timestamp
             last_cycle_timestamp = current_cycle_timestamp
@@ -308,7 +319,7 @@ class AdvancedCANMecanum(yeti.Module):
                 current_wheel_positions[3] = -self.motor_controllers[3].getPosition()
 
                 delta_wheel_positions = [c - l for c, l in zip(current_wheel_positions, last_wheel_positions)]
-                last_wheel_positions = current_wheel_positions
+                last_wheel_positions = current_wheel_positions[:]
                 average_wheel_speeds = [d * delta_time for d in delta_wheel_positions]
 
             # Get gyro state and get average angle
@@ -352,6 +363,32 @@ class AdvancedCANMecanum(yeti.Module):
 
     auto_drive_enabled = False
 
+    @remote_coroutines.public_coroutine
+    def auto_drive_x_at_setpoint(self):
+        x_pos = self.auto_drive_input_datastream.get().get("x_pos", 0)
+        x_setpoint = self.auto_drive_setpoint_datastream.get().get("x_pos", 0)
+        x_tolerance = self.auto_drive_config["x_tolerance"]
+        return abs(x_pos - x_setpoint) < x_tolerance
+
+    @remote_coroutines.public_coroutine
+    def auto_drive_y_at_setpoint(self):
+        y_pos = self.auto_drive_input_datastream.get().get("y_pos", 0)
+        y_setpoint = self.auto_drive_setpoint_datastream.get().get("y_pos", 0)
+        y_tolerance = self.auto_drive_config["y_tolerance"]
+        return abs(y_pos - y_setpoint) < y_tolerance
+
+    @remote_coroutines.public_coroutine
+    @asyncio.coroutine
+    def auto_drive_wait_for_x(self):
+        while not self.auto_drive_x_at_setpoint():
+            yield from asyncio.sleep(.1)
+
+    @remote_coroutines.public_coroutine
+    @asyncio.coroutine
+    def auto_drive_wait_for_y(self):
+        while not self.auto_drive_y_at_setpoint():
+            yield from asyncio.sleep(.1)
+
     @asyncio.coroutine
     @remote_coroutines.public_coroutine
     def auto_drive_enable(self):
@@ -368,7 +405,7 @@ class AdvancedCANMecanum(yeti.Module):
     def auto_drive_loop(self):
         last_input_x = 0
         last_input_y = 0
-        last_cycle_time = wpilib.Timer.getFPGATimestamp()
+        last_cycle_time = wpilib.Timer.getFPGATimestamp() - .05
 
         while self.auto_drive_enabled:
 
@@ -435,7 +472,7 @@ class AdvancedCANMecanum(yeti.Module):
             #Threshold values
             forward_percentage = threshold_value(forward_percentage, .10)
             right_percentage = threshold_value(right_percentage, .10)
-            clockwise_percentage = threshold_value(clockwise_percentage, .15)
+            clockwise_percentage = threshold_value(clockwise_percentage, .25)
 
             if self.SQUARE_INPUTS:
                 forward_percentage = signing_square(forward_percentage)

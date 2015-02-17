@@ -17,13 +17,13 @@ class AdvancedElevator(yeti.Module):
     SLAVE_CAN_IDS = []
 
     # PID Vals
-    JAG_SPEED_P = 0
-    JAG_SPEED_I = 0
-    JAG_SPEED_D = 0
+    JAG_SPEED_P = 0.500
+    JAG_SPEED_I = 0.000
+    JAG_SPEED_D = 0.000
 
-    JAG_DIST_P = 0
-    JAG_DIST_I = 0
-    JAG_DIST_D = 0
+    JAG_DIST_P = 1000.000
+    JAG_DIST_I = 2.000
+    JAG_DIST_D = 0.000
 
     # Manual Control
     MANUAL_MAX_SPEED = 5
@@ -38,13 +38,14 @@ class AdvancedElevator(yeti.Module):
     # Encoder Config
     HOME_POSITION = 2
     POSITION_TOLERANCE = .05
-    ENCODER_TICS_PER_ROTATION = 360
+    ENCODER_TICS_PER_ROTATION = 2048
     RPM_PER_FPS = 60/(.25 * math.pi)
     ROT_PER_FOOT = 1/(.25 * math.pi)
 
     #################################
     # RUN VARS
     manual_run = False
+    calibration_ref = 0
     run_events = list()
 
     def module_init(self):
@@ -96,6 +97,14 @@ class AdvancedElevator(yeti.Module):
         event = asyncio.Event()
         self.run_events.append(event)
         return event
+
+    @asyncio.coroutine
+    @yeti.autorun_coroutine
+    def calibrator_loop(self):
+        while True:
+            if not self.master_jaguar.getReverseLimitOK():
+                self.calibration_ref = self.master_jaguar.getPosition()
+            yield from asyncio.sleep(.01)
 
     @asyncio.coroutine
     @gamemode.teleop_task
