@@ -3,7 +3,7 @@ import yeti
 import wpilib
 import math
 from yeti.wpilib_extensions import Referee
-from yeti.interfaces import gamemode, remote_coroutines
+from yeti.interfaces import gamemode, remote_methods
 
 class AdvancedElevator(yeti.Module):
     """An advanced CAN controller for an elevator"""
@@ -134,10 +134,10 @@ class AdvancedElevator(yeti.Module):
         if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Position:
             self.master_jaguar.setPositionModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_DIST_P, self.JAG_DIST_I, self.JAG_DIST_D)
 
-    def set_speed_mode(self):
-        self.logger.info("Set speed mode")
-        if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
-            self.master_jaguar.setSpeedModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION, self.JAG_SPEED_P, self.JAG_SPEED_I, self.JAG_SPEED_D)
+    def set_percent_mode(self):
+        self.logger.info("Set percent mode")
+        if self.master_jaguar.getControlMode() != wpilib.CANJaguar.ControlMode.PercentVbus:
+            self.master_jaguar.setPercentModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION)
 
 
     @gamemode.teleop_task
@@ -147,12 +147,10 @@ class AdvancedElevator(yeti.Module):
             if self.joystick.getRawButton(self.MANUAL_RUN_BUTTON):
                 self.release_control()
                 self.manual_run = True
-                self.set_speed_mode()
+                self.set_percent_mode()
                 while self.joystick.getRawButton(self.MANUAL_RUN_BUTTON):
                     axis_val = self.joystick.getRawAxis(self.MANUAL_RUN_AXIS)
-                    speed_fps = axis_val * self.MANUAL_MAX_SPEED
-                    speed_rpm = self.RPM_PER_FPS * speed_fps
-                    self.master_jaguar.set(speed_rpm)
+                    self.master_jaguar.set(axis_val)
                     yield from asyncio.sleep(.05)
                 self.manual_run = False
                 self.master_jaguar.set(0)
@@ -201,16 +199,16 @@ class AdvancedElevator(yeti.Module):
 
     #Public coroutines with which to control this remotely
     @asyncio.coroutine
-    @remote_coroutines.public_coroutine
+    @remote_methods.public_coroutine
     def elevator_goto_home(self):
         yield from self.goto_home()
 
     @asyncio.coroutine
-    @remote_coroutines.public_coroutine
+    @remote_methods.public_coroutine
     def elevator_goto_bottom(self):
         yield from self.goto_bottom()
 
     @asyncio.coroutine
-    @remote_coroutines.public_coroutine
+    @remote_methods.public_coroutine
     def elevator_goto_pos(self, position):
         yield from self.goto_pos(position)
