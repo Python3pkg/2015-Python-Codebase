@@ -2,7 +2,7 @@ import asyncio
 import yeti
 
 from yeti.interfaces import gamemode, datastreams
-from yeti.interfaces.remote_methods import call_public_method, call_public_coroutine
+from yeti.interfaces.object_proxy import call_public_method, call_public_coroutine
 
 
 class EndOfAutoException(Exception):
