@@ -6,7 +6,7 @@ import networktables_controller
 
 @asyncio.coroutine
 def forward_request(request):
-    return web.HTTPFound("/index.html")
+    return web.HTTPFound("jsmpeg-master/stream-example.html")
 
 def run_server(port):
     print("Starting Dashboard Server.")
@@ -29,3 +29,4 @@ def run_server(port):
 
 if __name__ == "__main__":
     run_server(5802)
+
