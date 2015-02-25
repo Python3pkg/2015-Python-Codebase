@@ -15,9 +15,9 @@ class AdvancecdDriveAuto(yeti.Module):
     def do_auto(self):
         self.logger.info("Starting autonomous mode given by module " + self.name)
         call_public_method("drivetrain.reset_sensor_input")
-        self.drivetrain_control.push({"r_pos": 90})
         call_public_method("drivetrain.auto_drive_enable")
-        yield from call_public_coroutine("drivetrain.wait_for_r")
+        self.drivetrain_control.push({"x_pos": 100, "r_pos": 180})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
         call_public_method("drivetrain.auto_drive_disable")
         self.logger.info("Ending autonomous mode -- waiting for mode to change")
         while gamemode.is_autonomous():

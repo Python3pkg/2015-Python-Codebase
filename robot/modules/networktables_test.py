@@ -7,6 +7,9 @@ class NetworktablesTest(yeti.Module):
 
     def module_init(self):
         self.referee = Referee(self)
+        wpilib.SmartDashboard.putBoolean("boolean", True)
+        wpilib.SmartDashboard.putNumber("number", 5)
+        wpilib.SmartDashboard.putString("string", "hi")
         self.m1 = wpilib.Talon(0)
         self.referee.watch(self.m1)
         self.e1 = wpilib.Encoder(0, 1)
@@ -19,7 +22,6 @@ class NetworktablesTest(yeti.Module):
         #wpilib.LiveWindow.setEnabled(True)
 
     @asyncio.coroutine
-    @yeti.autorun_coroutine
     def ticker(self):
         i = 0
         while True:

@@ -15,6 +15,7 @@ class DriveCirclesAuto(yeti.Module):
 
     def module_init(self):
         self.drivetrain_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
+        self.drivetrain_external_input_datastream = datastreams.get_datastream("drivetrain_external_sensor_input")
 
     def check_mode(self):
         if not gamemode.is_autonomous():
@@ -24,6 +25,8 @@ class DriveCirclesAuto(yeti.Module):
     @gamemode.autonomous_task
     def run_auto(self):
         try:
+            self.drivetrain_external_input_datastream.push({"ultrasonic": {"enabled": True, "x_pos": 0}})
+
             call_public_method("drivetrain.reset_sensor_input")
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
             call_public_method("drivetrain.auto_drive_enable")
@@ -63,3 +66,6 @@ class DriveCirclesAuto(yeti.Module):
                 yield from asyncio.sleep(.5)
         except EndOfAutoException:
             self.logger.info("Aborted Autonomous mode")
+        finally:
+            call_public_method("drivetrain.auto_drive_disable")
+            self.drivetrain_external_input_datastream.push({"ultrasonic": {"enabled": False, "x_pos": None}})
