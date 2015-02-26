@@ -1,11 +1,12 @@
 from networktables import NetworkTable
 import asyncio
 import json
+import math
 from aiohttp import web, errors as weberrors
 from threading import RLock
 from copy import deepcopy
 
-server_address = "0.0.0.0"
+ip_address = "127.0.0.1"
 
 initialized_networktables = False
 
@@ -18,96 +19,139 @@ tagged_tables = list()
 
 class ConnectionListener:
     def connected(self, table):
-        set_local_value("/", "~CONNECTED~", True)
+        set_local_value("~CONNECTED~", True)
 
     def disconnected(self, table):
-        set_local_value("/", "~CONNECTED~", False)
+        set_local_value("~CONNECTED~", False)
 
-def subtable_listener(source, key, value, isNew):
+def val_listener(key, value, isNew):
+    #print("val_listener: key={}, value={}, type={}".format(key, value, type(value)))
+    set_local_value(key, value)
+
+def get_local_value(key):
     with table_data_lock:
-        if source.containsSubTable(key):
-            watch_table(value.path)
-        else:
-            val_listener(source, key, value, isNew)
+        if key[0] == NetworkTable.PATH_SEPARATOR:
+            key = key[1:]
+        value = table_data
+        for s in key.split(NetworkTable.PATH_SEPARATOR):
+            if s not in value:
+                return None
+            value = value[s]
+        return value
 
-def val_listener(source, key, value, isNew):
-    set_local_value(source.path, key, source.getValue(key))
-
-def set_local_value(path, key, value):
-
-    # Get the nested dictionary at path
-    target_ref = table_data
-    for s in path.split(NetworkTable.PATH_SEPARATOR):
-        if s == "":
-            continue
-        elif s not in target_ref:
-            target_ref[s] = dict()
-        target_ref = target_ref[s]
-
-    # Save the value if it is new
-    if key not in target_ref or target_ref[key] != value:
-        target_ref[key] = value
-        for con in connections:
-            con["updated_data"] = True
-
-def watch_table(key):
-    print("Watching Table " + key)
+def set_local_value(key, value):
     with table_data_lock:
-        if key in tagged_tables:
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            value = 0.0
+        if key[0] == NetworkTable.PATH_SEPARATOR:
+            key = key[1:]
+        keysplit = key.split(NetworkTable.PATH_SEPARATOR)
+        value_key = keysplit[-1:][0]
+        table_key = keysplit[:-1]
+        target_table = table_data
+
+        for s in table_key:
+            if s not in target_table:
+                target_table[s] = dict()
+            target_table = target_table[s]
+
+        # Save the value if it is new
+        if value_key == "":
             return
-        new_table = root_table.getTable(key)
-        new_table.addSubTableListener(subtable_listener)
-        new_table.addTableListener(val_listener, True)
 
-def setup_networktables(server=server_address):
+        if value_key in target_table:
+            value = type(target_table[value_key])(value)
+
+        target_table[value_key] = value
+        trigger_update()
+
+def trigger_update():
+    for con in connections:
+        con["updated_data"] = True
+
+def set_value(key, value):
+    try:
+        current_value = get_local_value(key)
+        print("old value: " + str(value))
+        if current_value is not None:
+            value = to_type(value, type(current_value))
+        print("new value: " + str(value))
+        if key[0] == NetworkTable.PATH_SEPARATOR:
+            key = key[1:]
+
+        if isinstance(value, bool):
+            root_table.putBoolean(key, value)
+        elif isinstance(value, float) or isinstance(value, int):
+            root_table.putNumber(key, value)
+        else:
+            root_table.putString(key, str(value))
+    except Exception as e:
+        print(e)
+    finally:
+        trigger_update()
+
+
+def to_type(value, target_type):
+    value = str(value)
+    if target_type is bool:
+        return value.lower() in ("yes", "true", "t", "1")
+    elif target_type is int or target_type is float:
+        return float(value)
+    else:
+        return value
+
+def setup_networktables(ip=ip_address):
     global root_table, table_data, initialized_networktables
     if initialized_networktables:
         return
-    NetworkTable.setIPAddress(server)
+    NetworkTable.setIPAddress(ip)
     NetworkTable.setClientMode()
     NetworkTable.initialize()
     root_table = NetworkTable.getTable("")
     c_listener = ConnectionListener()
     root_table.addConnectionListener(c_listener)
-    root_table.addSubTableListener(subtable_listener)
+    root_table.addGlobalListener(val_listener, True)
     initialized_networktables = True
 
 @asyncio.coroutine
 def networktables_websocket(request):
-    #Setup websocket
+    # Setup websocket
     ws = web.WebSocketResponse()
     ws.start(request)
 
-    #Setup connection dict
+    # Setup connection dict
     con_id = len(connections)
     with table_data_lock:
         connection = {"socket": ws, "updated_data": True}
         connections.append(connection)
     print("NT Websocket {} Connected".format(con_id))
 
-    #Start listener coroutine
+    # Start listener coroutine
     asyncio.async(networktables_websocket_listener(ws))
 
-    #Set IP status data
+    # Set IP status data
     ip = request.transport.get_extra_info("sockname")[0]
-    set_local_value("", "~SERVER_IP~", ip)
+    set_local_value("~SERVER_IP~", ip)
 
     last_data = dict()
 
-    #Update periodically until the websocket is closed.
+    # Update periodically until the websocket is closed.
     try:
-
         while True:
-            if connection["updated_data"]:
-                connection["updated_data"] = False
-                updates = dict_delta(last_data, table_data)
-                string_data = json.dumps(updates)
-                print("Sending " + string_data)
-                ws.send_str(string_data)
-                last_data = deepcopy(table_data)
+            yield from asyncio.sleep(1)
+            while True:
+                yield from asyncio.sleep(.1)
+                if connection["updated_data"]:
+                    connection["updated_data"] = False
+                    updates = dict_delta(last_data, table_data)
+                    string_data = json.dumps(updates)
+                    #print("Sending " + string_data)
+                    ws.send_str(string_data)
+                    last_data = deepcopy(table_data)
+                if ws.closing:
+                    break
             if ws.closing:
                 break
-            yield from asyncio.sleep(1)
     except weberrors.ClientDisconnectedError or weberrors.WSClientDisconnectedError:
         print("Client Disconnected")
     finally:
@@ -142,14 +186,7 @@ def networktables_websocket_listener(ws):
             jdata = yield from ws.receive_str()
         except Exception:
             return
+        print(jdata)
         data = json.loads(jdata)
-        root_table.pushData(data["name"], data["value"])
 
-def networktables_websocket_writer(ws):
-    while True:
-        try:
-            jdata = yield from ws.write_str()
-        except Exception:
-            return
-        data = json.loads(jdata)
-        root_table.pushData(data["name"], data["value"])
+        set_value(data["key"], data["value"])

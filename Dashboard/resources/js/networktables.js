@@ -65,6 +65,16 @@ function networktables_get_value(key, def){
     return target
 }
 
+function networktables_set_value(key, value){
+    if (networktables_wd_connected){
+        data = {}
+        data["key"] = key
+        data["value"] = value
+        strdata = JSON.stringify(data)
+        networktables_websocket.send(strdata)
+    }
+}
+
 function update_networktables_ui(){
     //Update NT connection badge
     if (networktables_get_value("/~CONNECTED~")){
@@ -107,10 +117,43 @@ function update_networktables_ui(){
     for (i=0; i < table_order.length; i++){
         name = table_order[i]
         html += '<tr><td>' + name +
-                '</td><td>' + filtered_data[name] + '</td></tr>';
+                '</td><td entryname="' + name + '" class="networktables_entry_value">' + filtered_data[name] +
+                '</td><td>' + filtered_data[name].constructor.name + '</td></tr>';
     }
     $("#networktables-table tbody").html(html)
+    $("#networktables-table .networktables_entry_value").click(networktables_edit_entry)
+    $.event.trigger({
+	    type: "ntupdate",
+        message: "update",
+        time: new Date()
+    });
 }
+
+function networktables_edit_entry(e){
+    jqobj = $(this)
+    name = jqobj.attr("entryname")
+    fullname = root_table + name
+    value = networktables_get_value(fullname)
+    textbox = $("<input></input>")
+    textbox.val(value)
+    jqobj.focusout(networktables_save_entry)
+    $(this).keyup(function (e){if(e.keyCode == 13){$(this).blur()}});
+    jqobj.html("")
+    jqobj.append(textbox)
+    textbox.focus()
+    $("#networktables-table .networktables_entry_value").off("click")
+}
+
+function networktables_save_entry(e){
+    jqobj = $(this)
+    name = jqobj.attr("entryname")
+    fullname = root_table + name
+    networktables_set_value(fullname, jqobj.find("input").val())
+    jqobj.unbind("focusout")
+}
+
+
+
 
 $(document).ready(function(){
    start_networktables()
