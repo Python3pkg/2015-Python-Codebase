@@ -50,6 +50,7 @@ class TwoPieceAutoThree(yeti.Module):
         self.check_mode()
         yield from call_public_coroutine("elevator.goto_pos", 3)
         self.check_mode()
+        yield from self.do_pause()
 
         # Strafe-turn to capture container
         self.logger.info("Drive phase 1")

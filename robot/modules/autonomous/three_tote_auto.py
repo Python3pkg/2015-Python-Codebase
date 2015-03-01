@@ -9,7 +9,7 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class ThreeStageAuto(yeti.Module):
+class ThreeToteAuto(yeti.Module):
 
     DO_PAUSES = True
     auto_start_timestamp = 0
@@ -28,7 +28,7 @@ class ThreeStageAuto(yeti.Module):
         if self.DO_PAUSES:
             drivetrain_input_data = self.drivetrain_sensor_input.get()
             print("Position Update: ({},{},{})".format(drivetrain_input_data.get("x_pos", 0), drivetrain_input_data.get("y_pos", 0), drivetrain_input_data.get("r_pos", 0)))
-            yield from asyncio.sleep(1)
+            yield from asyncio.sleep(2)
 
     def reset_auto_time(self):
         self.auto_start_timestamp = wpilib.Timer.getFPGATimestamp()
@@ -54,23 +54,19 @@ class ThreeStageAuto(yeti.Module):
 
         # Strafe to side
         self.logger.info("Drive phase 1")
-        self.drivetrain_setpoint_datastream.push({"x_pos": -2.5})
-        while self.drivetrain_sensor_input.get().get("x_pos") > -2:
-            yield from asyncio.sleep(.1)
-            self.check_mode()
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
         yield from self.do_pause()
 
         # Drive forward
         self.logger.info("Drive phase 2")
         self.drivetrain_setpoint_datastream.push({"y_pos": 2.7})
-        while self.drivetrain_sensor_input.get().get("y_pos") < 2.4:
-            yield from asyncio.sleep(.1)
-            self.check_mode()
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
         yield from self.do_pause()
 
-        # Strafe to auto zone at x=8
+        # Strafe back to center
         self.logger.info("Drive phase 3")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 7})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
         self.check_mode()
         self.logger.info("End two_piece_auto at {}".format(self.get_auto_time()))
@@ -78,7 +74,7 @@ class ThreeStageAuto(yeti.Module):
     @asyncio.coroutine
     def final_two_piece_run(self):
 
-        self.logger.info("Begin two_piece_run at {}".format(self.get_auto_time()))
+        self.logger.info("Begin final_two_piece_run at {}".format(self.get_auto_time()))
         call_public_method("drivetrain.reset_sensor_input")
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0})
 
@@ -88,30 +84,13 @@ class ThreeStageAuto(yeti.Module):
         call_public_method("elevator.set_setpoint", 1)
         self.check_mode()
 
-        # Strafe to side
-        self.logger.info("Drive phase 1")
-        self.drivetrain_setpoint_datastream.push({"x_pos": -2.5})
-        while self.drivetrain_sensor_input.get().get("x_pos") > -2:
-            yield from asyncio.sleep(.1)
-            self.check_mode()
-        yield from self.do_pause()
-
-        # Drive forward
-        self.logger.info("Drive phase 2")
-        self.drivetrain_setpoint_datastream.push({"y_pos": 2.7})
-        while self.drivetrain_sensor_input.get().get("y_pos") < 2.4:
-            yield from asyncio.sleep(.1)
-            self.check_mode()
-        yield from self.do_pause()
-
         # Strafe to auto zone at x=8
         self.logger.info("Drive phase 3")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 10})
-        while self.drivetrain_sensor_input.get().get("x_pos") < 5:
-            yield from asyncio.sleep(.1)
-            self.check_mode()
-        self.drivetrain_setpoint_datastream.push({"r_pos": 90})
-        yield from call_public_coroutine("elevator.goto_pos", .5)
+        self.drivetrain_setpoint_datastream.push({"x_pos": 8})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
+        yield from call_public_coroutine("elevator.goto_bottom")
+        self.drivetrain_setpoint_datastream.push({"y_pos": -4})
         self.check_mode()
         self.logger.info("End two_piece_auto at {}".format(self.get_auto_time()))
 

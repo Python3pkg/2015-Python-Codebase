@@ -93,15 +93,15 @@ class AdvancedElevator(yeti.Module):
     MASTER_CAN_ID = 10
     SLAVE_CAN_IDS = []
 
-    USE_SIMULATED_JAGUAR = True
-
+    USE_SIMULATED_JAGUAR = False
+    NT_DEBUG_OUT = True
 
     # Encoder Config
     HOME_POSITION = 2
-    TOTE_HEIGHT = 2
+    TOTE_HEIGHT = 1.1
 
-    POSITION_TOLERANCE = .05
-    ENCODER_TICS_PER_ROTATION = 2048
+    POSITION_TOLERANCE = .2
+    ENCODER_TICS_PER_ROTATION = 400
     ROT_PER_FOOT = 1/(.25 * math.pi)
 
     #################################
@@ -145,16 +145,13 @@ class AdvancedElevator(yeti.Module):
         last_tote_down = False
         while gamemode.is_teleop():
             # Check all method buttons
-            home = self.joystick.getRawButton(2)
             pickup = self.joystick.getRawButton(3)
             tote_up = self.joystick.getRawButton(4)
             tote_down = self.joystick.getRawButton(5)
 
             if not self.manual_run:
 
-                if home:
-                    self.setpoint = self.HOME_POSITION
-                elif pickup:
+                if pickup:
                     self.setpoint = 0
                 elif not pickup and last_pickup:
                     self.setpoint = self.HOME_POSITION
@@ -173,9 +170,17 @@ class AdvancedElevator(yeti.Module):
     @asyncio.coroutine
     def run_loop(self):
         self.setpoint = self.get_position()
+        self.master_jaguar.enableControl()
+        print("Hi from ae!")
         while gamemode.is_enabled():
-            if not self.master_jaguar.getReverseLimitOK():
-                self.calibration_ref = self.master_jaguar.getPosition()
+
+            if self.NT_DEBUG_OUT:
+                wpilib.SmartDashboard.putNumber("elvevator_pos", self.get_position())
+                wpilib.SmartDashboard.putNumber("elvevator_setpoint", self.setpoint)
+
+
+            if not self.master_jaguar.getForwardLimitOK():
+                self.calibration_ref = -self.master_jaguar.getPosition()
                 self.calibrated = True
 
             output = 0
@@ -187,25 +192,31 @@ class AdvancedElevator(yeti.Module):
                     self.setpoint = self.get_position()
                     self.manual_run = False
 
-                # If setpoint is zero, make it significantly negative so that it is sure to hit the limit switch.
+                # If setpoint is zero, always go down.
                 if self.setpoint <= 0 and self.master_jaguar.getReverseLimitOK():
-                    self.setpoint = -100
+                    self.setpoint = 0
+                    if self.master_jaguar.getForwardLimitOK():
+                        output = -1
+                    else:
+                        output = 0
+                else:
+                    pos_delta = self.setpoint - self.get_position()
 
-                pos_delta = self.setpoint - self.get_position()
+                    if abs(pos_delta) > self.POSITION_TOLERANCE:
+                        output = 1
+                        if pos_delta < 0:
+                            output = -output
 
-                if abs(pos_delta) > self.POSITION_TOLERANCE:
-                    output = 1
-                    if pos_delta < 0:
-                        output = -output
-
-            self.master_jaguar.set(output)
+            self.master_jaguar.set(-output)
+            wpilib.SmartDashboard.putNumber("elevator output", output)
             for jag in self.slave_jaguars:
-                jag.set(output)
+                jag.set(-output)
 
             yield from asyncio.sleep(.05)
+        self.master_jaguar.disableControl()
 
     def get_position(self):
-        return (self.master_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
+        return (-self.master_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
 
     @public_object(prefix="elevator")
     def set_setpoint(self, value):

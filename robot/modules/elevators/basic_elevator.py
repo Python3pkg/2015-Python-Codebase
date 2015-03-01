@@ -22,7 +22,7 @@ class BasicElevator(yeti.Module):
     def manual_elevator(self):
         self.lift_jag.enableControl()
         while gamemode.is_teleop():
-            value = self.joystick.getRawAxis(1) * 12
+            value = self.joystick.getRawAxis(1) * -12
             self.lift_jag.set(value)
             yield from asyncio.sleep(.05)
         self.lift_jag.disableControl()

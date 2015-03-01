@@ -5,7 +5,7 @@ import time
 import picamera
 
 def main():
-    camera = picamera.Camera()
+    camera = picamera.PiCamera()
     try:
         server_socket = socket.socket()
         server_socket.bind(('0.0.0.0',8000))
@@ -17,7 +17,12 @@ def main():
         camera.start_preview()
         time.sleep(2)
         camera.stop_preview()
+        print('ready to stream')
+        time.sleep(.1)
         camera.start_recording(stream, format= 'h264')
+        camera.wait_recording(60)
+    except Exception as e:
+        print(e)
     finally:
         camera.stop_recording()
         stream.close()

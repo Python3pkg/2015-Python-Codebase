@@ -208,7 +208,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -311,8 +311,8 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 15, "trans_tolerance": .1,
-                                               "max_rot_speed": 180, "max_rot_acceleration": 360, "rot_tolerance": 2.5})
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 5, "trans_tolerance": .1,
+                                               "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
         self.logger.info("Starting Gyro Init")
         self.gyro = wpilib.Gyro(0)
@@ -362,7 +362,7 @@ class AdvancedCANMecanum(yeti.Module):
                 controller.setPercentModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION)
             self.reset_jaguar_input = True
 
-    reset_sensor_input = False
+    reset_sensor_input_flag = False
     reset_jaguar_input = False
 
     @public_object(prefix="drivetrain")
@@ -370,7 +370,7 @@ class AdvancedCANMecanum(yeti.Module):
         self.sensor_input_datastream.push({"x_pos": 0, "x_speed": 0,
                                            "y_pos": 0, "y_speed": 0,
                                            "r_pos": 0, "r_speed": 0})
-        self.reset_sensor_input = True
+        self.reset_sensor_input_flag = True
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
@@ -439,7 +439,7 @@ class AdvancedCANMecanum(yeti.Module):
     def auto_drive_loop(self):
 
         last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
-        self.reset_sensor_input = True
+        self.reset_sensor_input_flag = True
         self.reset_jaguar_input = True
         was_enabled = False
         while True:
@@ -449,14 +449,14 @@ class AdvancedCANMecanum(yeti.Module):
             # Sensor Input calculations
 
             # Handle value reset
-            if self.reset_sensor_input:
+            if self.reset_sensor_input_flag:
                 last_x_pos = 0
                 last_y_pos = 0
                 last_r_pos = 0
                 if self.USE_GYRO:
                     self.gyro.reset()
                 last_gyro_angle = 0
-                self.reset_sensor_input = False
+                self.reset_sensor_input_flag = False
 
             # Handle jaguar encoder value reset
             if self.reset_jaguar_input:
@@ -728,11 +728,18 @@ class AdvancedCANMecanum(yeti.Module):
     @gamemode.teleop_task
     @asyncio.coroutine
     def joystick_loop(self):
+        last_reset_button = True
         while gamemode.is_teleop():
 
             # Ensure auto drive is disabled
             if self.auto_drive_enabled:
                 self.auto_drive_disable()
+
+            # Handle tracking reset button
+            reset_button_val = self.joystick.getRawButton(5)
+            if reset_button_val and not last_reset_button:
+                self.reset_sensor_input()
+            last_reset_button = reset_button_val
 
             forward_percentage = self.joystick.getY()
             right_percentage = -self.joystick.getX()
