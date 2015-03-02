@@ -9,16 +9,19 @@ from yeti.interfaces.object_proxy import public_object
 class SimulatedCANJaguar():
 
     MAX_RPM_OUTPUT = 120
+    FORWARD_LIMIT = 6
+    REVERSE_LIMIT = 0
+    STARTING_POS = 6
 
     def __init__(self, CAN_ID):
         self.talon = wpilib.Talon(CAN_ID - 10)
-        self.position = 0
+        self.position = self.STARTING_POS
         self.last_update = wpilib.Timer.getFPGATimestamp()
         self.speed = 0
         self.mode = wpilib.CANJaguar.ControlMode.PercentVbus
 
     def _reset_physics(self):
-        self.position = 0
+        self.position = self.STARTING_POS
         self.speed = 0
 
     def setSpeedModeQuadEncoder(self, codesPerRev, p, i, d):
@@ -30,7 +33,10 @@ class SimulatedCANJaguar():
         self._reset_physics()
 
     def getReverseLimitOK(self):
-        return self.position > 0
+        return self.REVERSE_LIMIT is None or self.position > self.REVERSE_LIMIT
+
+    def getForwardLimitOK(self):
+        return self.FORWARD_LIMIT is None or self.position < self.FORWARD_LIMIT
 
     def _update_physics(self):
         current_time = wpilib.Timer.getFPGATimestamp()
@@ -49,7 +55,7 @@ class SimulatedCANJaguar():
             self.setSpeed(value * self.MAX_RPM_OUTPUT)
 
     def setSpeed(self, speed):
-        if speed < 0 and not self.getReverseLimitOK():
+        if (speed < 0 and not self.getReverseLimitOK()) or (speed > 0 and not self.getForwardLimitOK()):
             speed = 0
         self.speed = speed
         self.talon.set(speed / self.MAX_RPM_OUTPUT)
@@ -93,7 +99,7 @@ class AdvancedElevator(yeti.Module):
     MASTER_CAN_ID = 10
     SLAVE_CAN_IDS = []
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
     NT_DEBUG_OUT = True
 
     # Encoder Config
@@ -171,7 +177,6 @@ class AdvancedElevator(yeti.Module):
     def run_loop(self):
         self.setpoint = self.get_position()
         self.master_jaguar.enableControl()
-        print("Hi from ae!")
         while gamemode.is_enabled():
 
             if self.NT_DEBUG_OUT:
@@ -193,7 +198,7 @@ class AdvancedElevator(yeti.Module):
                     self.manual_run = False
 
                 # If setpoint is zero, always go down.
-                if self.setpoint <= 0 and self.master_jaguar.getReverseLimitOK():
+                if self.setpoint <= 0:
                     self.setpoint = 0
                     if self.master_jaguar.getForwardLimitOK():
                         output = -1
@@ -225,8 +230,10 @@ class AdvancedElevator(yeti.Module):
     @public_object(prefix="elevator")
     @asyncio.coroutine
     def goto_pos(self, value):
+        if not self.calibrated and value != 0:
+            yield from self.goto_bottom()
         self.setpoint = value
-        while abs(self.get_position() - value) > self.POSITION_TOLERANCE:
+        while abs(self.get_position() - value) > self.POSITION_TOLERANCE or not self.calibrated:
             if not gamemode.is_autonomous():
                 self.setpoint = self.get_position()
                 break

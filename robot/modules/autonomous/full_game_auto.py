@@ -9,7 +9,7 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class ThreeStageAuto(yeti.Module):
+class FullGameAuto(yeti.Module):
 
     DO_PAUSES = True
     auto_start_timestamp = 0
@@ -37,7 +37,42 @@ class ThreeStageAuto(yeti.Module):
         return wpilib.Timer.getFPGATimestamp() - self.auto_start_timestamp
 
     @asyncio.coroutine
-    def two_piece_run(self):
+    def first_two_piece_run(self):
+        """
+        This is one possible version of a two piece autonomous mode. It lifts the tote, strafe-turns to capture the RC,
+        and drives to the auto zone. It averages about 4.4 seconds for the sequence and should work in all staging zones.
+        It probably won't work for unloading the stack at the end.
+        """
+        # Zero drive setpoints
+        call_public_method("drivetrain.reset_sensor_input")
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0})
+
+        # Grab tote
+        yield from call_public_coroutine("elevator.goto_bottom")
+        self.check_mode()
+        yield from call_public_coroutine("elevator.goto_pos", 3)
+        self.check_mode()
+        yield from self.do_pause()
+
+        # Strafe-turn to capture container
+        self.logger.info("Drive phase 1")
+        self.drivetrain_setpoint_datastream.push({"x_pos": -1.5, "y_pos": 2.5, "r_pos": -45})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        self.check_mode()
+        yield from self.do_pause()
+
+        # Drive to auto zone at x=8.5
+        self.logger.info("Drive phase 2")
+        self.drivetrain_setpoint_datastream.push({"x_pos": 8.5, "r_pos": -90})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "r_pos": -90})
+        while self.drivetrain_sensor_input.get().get("x_pos") > 8:
+            yield from asyncio.sleep(.1)
+            self.check_mode()
+        self.check_mode()
+
+    @asyncio.coroutine
+    def second_two_piece_run(self):
         """
         This is one possible version of a two piece autonomous mode. It strafes left, drives forward, and strafes right.
         It averages about 3.1 seconds for the sequence but won't work in staging zone 1.
@@ -72,6 +107,7 @@ class ThreeStageAuto(yeti.Module):
         self.logger.info("Drive phase 3")
         self.drivetrain_setpoint_datastream.push({"x_pos": 7})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
         self.check_mode()
         self.logger.info("End two_piece_auto at {}".format(self.get_auto_time()))
 
@@ -106,7 +142,7 @@ class ThreeStageAuto(yeti.Module):
 
         # Strafe to auto zone at x=8
         self.logger.info("Drive phase 3")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 10})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 9})
         while self.drivetrain_sensor_input.get().get("x_pos") < 5:
             yield from asyncio.sleep(.1)
             self.check_mode()
@@ -134,9 +170,9 @@ class ThreeStageAuto(yeti.Module):
             call_public_method("drivetrain.auto_drive_enable")
             self.reset_auto_time()
 
-            yield from self.two_piece_run()
+            yield from self.first_two_piece_run()
             yield from self.get_next_tote()
-            yield from self.two_piece_run()
+            yield from self.second_two_piece_run()
             yield from self.get_next_tote()
             yield from self.final_two_piece_run()
 

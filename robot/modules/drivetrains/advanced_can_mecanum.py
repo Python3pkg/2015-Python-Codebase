@@ -17,6 +17,7 @@ class SimulatedCANJaguar():
         self.last_update = wpilib.Timer.getFPGATimestamp()
         self.speed = 0
         self.mode = wpilib.CANJaguar.ControlMode.PercentVbus
+        self.enabled = False
 
     def _reset_physics(self):
         self.position = 0
@@ -37,12 +38,13 @@ class SimulatedCANJaguar():
 
     def set(self, value):
         self._update_physics()
-        if self.mode == wpilib.CANJaguar.ControlMode.Speed:
-            self.speed = value
-            self.talon.set(value / self.MAX_RPM_OUTPUT)
-        elif self.mode == wpilib.CANJaguar.ControlMode.PercentVbus:
-            self.speed = value * self.MAX_RPM_OUTPUT
-            self.talon.set(value)
+        if self.enabled:
+            if self.mode == wpilib.CANJaguar.ControlMode.Speed:
+                self.speed = value
+                self.talon.set(value / self.MAX_RPM_OUTPUT)
+            elif self.mode == wpilib.CANJaguar.ControlMode.PercentVbus:
+                self.speed = value * self.MAX_RPM_OUTPUT
+                self.talon.set(value)
 
     def get(self):
         return self.speed
@@ -58,10 +60,13 @@ class SimulatedCANJaguar():
         return self.position
 
     def enableControl(self):
-        pass
+        self._update_physics()
+        self.enabled = True
 
     def disableControl(self):
-        pass
+        self._update_physics()
+        self.enabled = False
+        self.speed = 0
 
     def getOutputCurrent(self):
         return 0
@@ -208,7 +213,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -311,13 +316,14 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 5, "trans_tolerance": .1,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 10, "trans_tolerance": .1,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
-        self.logger.info("Starting Gyro Init")
-        self.gyro = wpilib.Gyro(0)
-        self.logger.info("Finished Gyro Init")
-        self.referee.watch(self.gyro)
+        if self.USE_GYRO:
+            self.logger.info("Starting Gyro Init")
+            self.gyro = wpilib.Gyro(0)
+            self.logger.info("Finished Gyro Init")
+            self.referee.watch(self.gyro)
 
         if self.ROT_RATE_ENABLED:
             # Setup rotational rate PID controller
@@ -339,11 +345,7 @@ class AdvancedCANMecanum(yeti.Module):
                 self.gyro_pos_lock_pid_out = val
 
             self.rot_lock_pid_controller = wpilib.PIDController(self.ROT_LOCK_P, self.ROT_LOCK_I, self.ROT_LOCK_D, pos_pid_source, pos_pid_out)
-            wpilib.LiveWindow.addActuator(self.name, "rot lock pid", self.rot_lock_pid_controller)
             self.rot_lock_pid_controller.setOutputRange(-360, 360)
-
-
-
 
     gyro_rate_pid_out = 0
     gyro_pos_lock_pid_out = 0
@@ -352,15 +354,19 @@ class AdvancedCANMecanum(yeti.Module):
         if self.motor_controllers[0].getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
             self.logger.info("Set jaguars to speed mode.")
             for controller in self.motor_controllers:
+                controller.disableControl()
                 controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
-            self.reset_jaguar_input = True
+                controller.enableControl()
+                self.reset_jaguar_input = True
 
     def set_percent_mode(self):
         if self.motor_controllers[0].getControlMode() != wpilib.CANJaguar.ControlMode.PercentVbus:
             self.logger.info("Set jaguars to percent mode.")
             for controller in self.motor_controllers:
+                controller.disableControl()
                 controller.setPercentModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION)
-            self.reset_jaguar_input = True
+                controller.enableControl()
+                self.reset_jaguar_input = True
 
     reset_sensor_input_flag = False
     reset_jaguar_input = False
@@ -602,15 +608,10 @@ class AdvancedCANMecanum(yeti.Module):
 
                 if not was_enabled:
                     # Enable the gyro rate pid loop if it is initialized
-                    if self.USE_GYRO:
-                        if self.ROT_RATE_ENABLED:
-                            self.rot_rate_pid_controller.enable()
-                        if self.ROT_LOCK_ENABLED:
-                            self.rot_lock_pid_controller.disable()
-
-                    # Enable CAN Jaguars
-                    for controller in self.motor_controllers:
-                        controller.enableControl()
+                    if self.ROT_RATE_ENABLED:
+                        self.rot_rate_pid_controller.enable()
+                    if self.ROT_LOCK_ENABLED:
+                        self.rot_lock_pid_controller.disable()
 
                     rotation_locked = False
                     was_enabled = True
@@ -632,11 +633,11 @@ class AdvancedCANMecanum(yeti.Module):
                     self.set_speed_mode()
 
                     # Rotation lock enable/disable
-                    if self.USE_GYRO and self.ROT_LOCK_ENABLED:
+                    if self.ROT_LOCK_ENABLED:
                         if ctrclockwise_speed_in == 0:
                             if not rotation_locked:
                                 rotation_locked = True
-                                self.rot_lock_pid_controller.setSetpoint(self.gyro.getAngle())
+                                self.rot_lock_pid_controller.setSetpoint(r_pos)
                                 self.rot_lock_pid_controller.enable()
                                 if self.ROT_RATE_ENABLED:
                                     self.rot_rate_pid_controller.disable()
@@ -648,9 +649,9 @@ class AdvancedCANMecanum(yeti.Module):
                                     self.rot_rate_pid_controller.enable()
 
                     # Get rotation source
-                    if self.USE_GYRO and self.ROT_LOCK_ENABLED and rotation_locked:
+                    if self.ROT_LOCK_ENABLED and rotation_locked:
                         ctrclockwise_speed_out = self.gyro_pos_lock_pid_out
-                    elif self.USE_GYRO and self.ROT_RATE_ENABLED:
+                    elif self.ROT_RATE_ENABLED:
                         self.rot_rate_pid_controller.setSetpoint(ctrclockwise_speed_in)
                         ctrclockwise_speed_out = self.gyro_rate_pid_out
                     else:
@@ -704,15 +705,10 @@ class AdvancedCANMecanum(yeti.Module):
             else:
                 if was_enabled:
                     # Disable pid if used
-                    if self.USE_GYRO:
-                        if self.ROT_RATE_ENABLED:
-                            self.rot_rate_pid_controller.disable()
-                        if self.ROT_LOCK_ENABLED:
-                            self.rot_lock_pid_controller.disable()
-
-                    # Disable CAN Jaguars.
-                    for controller in self.motor_controllers:
-                        controller.disableControl()
+                    if self.ROT_RATE_ENABLED:
+                        self.rot_rate_pid_controller.disable()
+                    if self.ROT_LOCK_ENABLED:
+                        self.rot_lock_pid_controller.disable()
 
                     self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0, "enable_esp": True})
                     was_enabled = False
@@ -776,8 +772,7 @@ class AdvancedCANMecanum(yeti.Module):
 
     def module_deinit(self):
         # Disable pid if used
-        if self.USE_GYRO:
-            if self.ROT_RATE_ENABLED:
-                self.rot_rate_pid_controller.disable()
-            if self.ROT_LOCK_ENABLED:
-                self.rot_lock_pid_controller.disable()
+        if self.ROT_RATE_ENABLED:
+            self.rot_rate_pid_controller.disable()
+        if self.ROT_LOCK_ENABLED:
+            self.rot_lock_pid_controller.disable()

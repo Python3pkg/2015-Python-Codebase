@@ -9,9 +9,9 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class TwoPieceAutoThree(yeti.Module):
+class TwoPieceAuto(yeti.Module):
     """
-    This is one possible version of a two piece autonomous mode. It lifts the tote, strafe-turns to capture the RC,
+    This is a two-piece autonomous mode. It lifts the tote, strafe-turns to capture the RC,
     and drives to the auto zone. It averages about 4.4 seconds for the sequence and should work in all staging zones.
     It probably won't work for unloading the stack at the end.
     """
