@@ -39,7 +39,7 @@ class FullGameAuto(yeti.Module):
         return wpilib.Timer.getFPGATimestamp() - self.auto_start_timestamp
 
     @asyncio.coroutine
-    def first_two_piece_run(self):
+    def first_container(self, y_pos):
         """
         This is one possible version of a two piece autonomous mode. It lifts the tote, strafe-turns to capture the RC,
         and drives to the auto zone. It averages about 4.4 seconds for the sequence and should work in all staging zones.
@@ -72,7 +72,7 @@ class FullGameAuto(yeti.Module):
         self.check_mode()
 
     @asyncio.coroutine
-    def second_two_piece_run(self):
+    def second_container(self, ):
         """
         This is one possible version of a two piece autonomous mode. It strafes left, drives forward, and strafes right.
         It averages about 3.1 seconds for the sequence but won't work in staging zone 1.

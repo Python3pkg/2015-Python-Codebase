@@ -213,7 +213,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -316,7 +316,7 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 10, "trans_tolerance": .1,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 5, "trans_tolerance": .1,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
         if self.USE_GYRO:

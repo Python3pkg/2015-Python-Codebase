@@ -99,7 +99,7 @@ class AdvancedElevator(yeti.Module):
     MASTER_CAN_ID = 10
     SLAVE_CAN_IDS = []
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
     NT_DEBUG_OUT = True
 
     # Encoder Config
@@ -144,7 +144,6 @@ class AdvancedElevator(yeti.Module):
             self.slave_jaguars.append(canjag)
 
     @asyncio.coroutine
-    @gamemode.teleop_task
     def joystick_control(self):
         last_pickup = False
         last_tote_up = False
@@ -189,7 +188,7 @@ class AdvancedElevator(yeti.Module):
                 self.calibrated = True
 
             output = 0
-            if self.joystick.getRawButton(1) and gamemode.is_teleop():
+            if gamemode.is_teleop():
                 self.manual_run = True
                 output = self.joystick.getY()
             else:

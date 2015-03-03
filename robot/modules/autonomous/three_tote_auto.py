@@ -44,13 +44,15 @@ class ThreeToteAuto(yeti.Module):
         """
         self.logger.info("Begin two_piece_run at {}".format(self.get_auto_time()))
         call_public_method("drivetrain.reset_sensor_input")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0, "x_speed": 0, "y_speed": 0, "r_speed": 0})
 
         # Grab tote
-        yield from call_public_coroutine("elevator.goto_pos", .5)
+        call_public_method("drivetrain.disable_auto_drive")
+        yield from call_public_coroutine("elevator.goto_bottom")
         self.check_mode()
-        call_public_method("elevator.set_setpoint", 1)
+        yield from call_public_coroutine("elevator.goto_pos", 1)
         self.check_mode()
+        call_public_method("drivetrain.enable_auto_drive")
 
         # Strafe to side
         self.logger.info("Drive phase 1")
@@ -79,10 +81,12 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0})
 
         # Grab tote
-        yield from call_public_coroutine("elevator.goto_pos", .5)
+        call_public_method("drivetrain.disable_auto_drive")
+        yield from call_public_coroutine("elevator.goto_bottom")
         self.check_mode()
-        call_public_method("elevator.set_setpoint", 1)
+        yield from call_public_coroutine("elevator.goto_pos", 1)
         self.check_mode()
+        call_public_method("drivetrain.enable_auto_drive")
 
         # Strafe to auto zone at x=8
         self.logger.info("Drive phase 3")
@@ -100,9 +104,9 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 6, "r_pos": 0})
         yield from call_public_coroutine("elevator.goto_home")
         yield from call_public_coroutine("drivetrain.wait_for_x")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 6.5, "r_pos": 0})
-        call_public_method("elevator.set_setpoint", 1)
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 6.7, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        yield from call_public_coroutine("elevator.goto_bottom")
         self.logger.info("End get_next_tote at {}".format(self.get_auto_time()))
 
     @asyncio.coroutine

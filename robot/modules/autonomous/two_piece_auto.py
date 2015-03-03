@@ -48,7 +48,7 @@ class TwoPieceAuto(yeti.Module):
         # Grab tote
         yield from call_public_coroutine("elevator.goto_bottom")
         self.check_mode()
-        yield from call_public_coroutine("elevator.goto_pos", 3)
+        yield from call_public_coroutine("elevator.goto_pos", 5)
         self.check_mode()
         yield from self.do_pause()
 
