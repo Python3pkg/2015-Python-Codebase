@@ -4,6 +4,11 @@ import wpilib
 
 class PhysicsEngine(core.PhysicsEngine):
 
+    def __init__(self, physics_controller):
+        self.physics_controller = physics_controller
+        physics_controller.add_gyro_channel(0)
+
+
     def update_sim(self, hal_data, now, tm_diff):
         front_left_wheel = hal_data["pwm"][2]["value"]
         rear_left_wheel = hal_data["pwm"][4]["value"]

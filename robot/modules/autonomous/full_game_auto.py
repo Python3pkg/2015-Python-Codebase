@@ -159,6 +159,7 @@ class FullGameAuto(yeti.Module):
             self.DO_PAUSES = wpilib.SmartDashboard.getBoolean("do_pauses")
             call_public_method("drivetrain.auto_drive_enable")
             self.reset_auto_time()
+            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
             yield from self.get_next_tote(0)
             yield from self.first_two_piece_run()
             yield from self.get_next_tote(6)

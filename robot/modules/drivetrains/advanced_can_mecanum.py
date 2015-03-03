@@ -74,6 +74,9 @@ class SimulatedCANJaguar():
     def getOutputVoltage(self):
         return 0
 
+    def setNeuteralMode(self, mode):
+        pass
+
     def free(self):
         self.talon.free()
 
@@ -213,7 +216,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -255,7 +258,7 @@ class AdvancedCANMecanum(yeti.Module):
     # GYRO CONF
 
     # Use Gyro
-    USE_GYRO = False
+    USE_GYRO = True
 
     ROT_RATE_ENABLED = False
     # Rotation rate PID Values
@@ -300,6 +303,7 @@ class AdvancedCANMecanum(yeti.Module):
                 controller = SimulatedCANJaguar(motor_id)
             else:
                 controller = wpilib.CANJaguar(motor_id)
+            controller.setNeuteralMode(wpilib.CANJaguar.NeutralMode.Brake)
             self.referee.watch(controller)
             self.motor_controllers.append(controller)
         self.set_speed_mode()
@@ -316,7 +320,7 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 5, "trans_tolerance": .1,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .1,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
         if self.USE_GYRO:
@@ -495,10 +499,10 @@ class AdvancedCANMecanum(yeti.Module):
             # If we are using the gyro, use it for r_speed
             if self.USE_GYRO:
                 # Get gyro state and get average angle
-                current_gyro_angle = self.gyro.getAngle()
+                current_gyro_angle = -self.gyro.getAngle()
                 delta_gyro_angle = current_gyro_angle - last_gyro_angle
                 robot_r_speed = delta_gyro_angle / delta_time
-                self.last_gyro_angle = current_gyro_angle
+                last_gyro_angle = current_gyro_angle
 
             # Get total global rotation from rotation speed
             r_pos = (robot_r_speed * delta_time) + last_r_pos

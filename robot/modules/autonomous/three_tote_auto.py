@@ -11,13 +11,15 @@ class EndOfAutoException(Exception):
 
 class ThreeToteAuto(yeti.Module):
 
-    DO_PAUSES = True
+    PAUSE = 1
     auto_start_timestamp = 0
 
     def module_init(self):
         self.drivetrain_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.drivetrain_sensor_input = datastreams.get_datastream("drivetrain_sensor_input")
-        wpilib.SmartDashboard.putBoolean("do_pauses", False)
+        self.elevator_setpoint_datastream = datastreams.get_datastream("elevator_setpoint")
+        self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
+        wpilib.SmartDashboard.putNumber("pause_duration", 0)
 
     def check_mode(self):
         if not gamemode.is_autonomous():
@@ -25,10 +27,11 @@ class ThreeToteAuto(yeti.Module):
 
     @asyncio.coroutine
     def do_pause(self):
-        if self.DO_PAUSES:
+        self.check_mode()
+        if self.PAUSE > 0:
             drivetrain_input_data = self.drivetrain_sensor_input.get()
             print("Position Update: ({},{},{})".format(drivetrain_input_data.get("x_pos", 0), drivetrain_input_data.get("y_pos", 0), drivetrain_input_data.get("r_pos", 0)))
-            yield from asyncio.sleep(2)
+            yield from asyncio.sleep(self.PAUSE)
 
     def reset_auto_time(self):
         self.auto_start_timestamp = wpilib.Timer.getFPGATimestamp()
@@ -36,92 +39,95 @@ class ThreeToteAuto(yeti.Module):
     def get_auto_time(self):
         return wpilib.Timer.getFPGATimestamp() - self.auto_start_timestamp
 
-    @asyncio.coroutine
-    def two_piece_run(self):
-        """
-        This is one possible version of a two piece autonomous mode. It strafes left, drives forward, and strafes right.
-        It averages about 3.1 seconds for the sequence but won't work in staging zone 1.
-        """
-        self.logger.info("Begin two_piece_run at {}".format(self.get_auto_time()))
-        call_public_method("drivetrain.reset_sensor_input")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0, "x_speed": 0, "y_speed": 0, "r_speed": 0})
-
-        # Grab tote
-        call_public_method("drivetrain.disable_auto_drive")
-        yield from call_public_coroutine("elevator.goto_bottom")
-        self.check_mode()
-        yield from call_public_coroutine("elevator.goto_pos", 1)
-        self.check_mode()
-        call_public_method("drivetrain.enable_auto_drive")
-
-        # Strafe to side
-        self.logger.info("Drive phase 1")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-        yield from self.do_pause()
-
-        # Drive forward
-        self.logger.info("Drive phase 2")
-        self.drivetrain_setpoint_datastream.push({"y_pos": 2.7})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-        yield from self.do_pause()
-
-        # Strafe back to center
-        self.logger.info("Drive phase 3")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-        self.check_mode()
-        self.logger.info("End two_piece_auto at {}".format(self.get_auto_time()))
+    def report(self, msg):
+        self.logger.info("{} at {} seconds".format(msg, self.get_auto_time()))
 
     @asyncio.coroutine
-    def final_two_piece_run(self):
+    def get_tote(self, y_pos):
+        self.report("Getting tote at y={}".format(y_pos))
 
-        self.logger.info("Begin final_two_piece_run at {}".format(self.get_auto_time()))
-        call_public_method("drivetrain.reset_sensor_input")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0})
+        # If we have room, raise forks and close in on tote.
+        if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - .5:
+            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - .5, "r_pos": 0})
+            yield from call_public_coroutine("elevator.goto_home")
+            yield from call_public_coroutine("drivetrain.wait_for_x")
 
-        # Grab tote
-        call_public_method("drivetrain.disable_auto_drive")
-        yield from call_public_coroutine("elevator.goto_bottom")
-        self.check_mode()
-        yield from call_public_coroutine("elevator.goto_pos", 1)
-        self.check_mode()
-        call_public_method("drivetrain.enable_auto_drive")
-
-        # Strafe to auto zone at x=8
-        self.logger.info("Drive phase 3")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 8})
+        # Drive to tote.
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
+        # Grab tote.
         yield from call_public_coroutine("elevator.goto_bottom")
-        self.drivetrain_setpoint_datastream.push({"y_pos": -4})
-        self.check_mode()
-        self.logger.info("End two_piece_auto at {}".format(self.get_auto_time()))
+
+        # Set the tote to lift before returning
+        call_public_method("elevator.set_setpoint", 1)
 
     @asyncio.coroutine
-    def get_next_tote(self):
-        self.logger.info("Begin get_next_tote at {}".format(self.get_auto_time()))
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 6, "r_pos": 0})
-        yield from call_public_coroutine("elevator.goto_home")
+    def move_container(self, y_pos):
+        self.report("Moving container at y={}".format(y_pos))
+
+        # Set the x and y setpoint to off the corner of the container (If it had a corner!)
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 1, "r_pos": 0})
+        self.check_mode()
+
+        # Wait until we clear the container (cutting the corner slightly)
+        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
+            yield from asyncio.sleep(.1)
+            self.check_mode()
+
+        # Set the correct y_pos
+        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos})
+
+        # Wait for x to be in-place
         yield from call_public_coroutine("drivetrain.wait_for_x")
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 6.7, "r_pos": 0})
+
+        # Wait for y to be close enough
+        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - .5:
+            yield from asyncio.sleep(.1)
+            self.check_mode()
+
+        # Move container, waiting for x
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0})
+        yield from call_public_coroutine("drivetrain.wait_for_x")
+
+    @asyncio.coroutine
+    def score_stack(self, stack_x_pos):
+
+        self.report("Scoring stack at x={}".format(stack_x_pos))
+
+        # Strafe to stack x pos
+        self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
+        # Drop stack
         yield from call_public_coroutine("elevator.goto_bottom")
-        self.logger.info("End get_next_tote at {}".format(self.get_auto_time()))
+
+        # Get stack y and back off
+        stack_y = self.drivetrain_sensor_input.get()["y_pos"]
+        self.drivetrain_setpoint_datastream.push({"y_pos": stack_y - 2})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
 
     @asyncio.coroutine
     @gamemode.autonomous_task
     def run_auto(self):
         try:
-            self.DO_PAUSES = wpilib.SmartDashboard.getBoolean("do_pauses")
+            self.PAUSE = wpilib.SmartDashboard.getNumber("pause_duration")
             call_public_method("drivetrain.auto_drive_enable")
+            call_public_method("drivetrain.reset_sensor_input")
             self.reset_auto_time()
 
-            yield from self.two_piece_run()
-            yield from self.get_next_tote()
-            yield from self.two_piece_run()
-            yield from self.get_next_tote()
-            yield from self.final_two_piece_run()
+            yield from self.get_tote(0)
+            yield from self.do_pause()
+            yield from self.move_container(2.7)
+            yield from self.do_pause()
+            yield from self.get_tote(6.5)
+            yield from self.do_pause()
+            yield from self.move_container(9.2)
+            yield from self.do_pause()
+            yield from self.get_tote(13)
+            yield from self.do_pause()
+            yield from self.score_stack(8)
 
             self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
 
