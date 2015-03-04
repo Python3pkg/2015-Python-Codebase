@@ -13,7 +13,7 @@ class AdvancecdDriveAuto(yeti.Module):
         self.drivetrain_control = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.drivetrain_config = datastreams.get_datastream("drivetrain_auto_config")
         self.drivetrain_sensor_input = datastreams.get_datastream("drivetrain_sensor_input")
-        config_options = {"x_setpoint": 0, "y_setpoint": 0, "r_setpoint": 0, "start_delay": 0}
+        config_options = {"x_setpoint": 1, "y_setpoint": 2, "r_setpoint": 3, "start_delay": 4}
         for key in config_options:
             value = config_options[key]
             if wpilib.SmartDashboard.getNumber("autonomous/" + key, value) == value:

@@ -37,11 +37,14 @@ class AutoSwitcher(yeti.Module):
                 selected_auto = self.auto_module_paths[selected_auto_id]
             else:
                 selected_auto = ""
+
             if last_selected_auto != selected_auto:
                 if selected_auto != "":
                     self.logger.info("Loading " + selected_auto + "!")
                 yield from self.load_auto_module(selected_auto)
+                wpilib.SmartDashboard.putNumber(self.sd_prefix + "loaded_auto", selected_auto_id)
                 last_selected_auto = selected_auto
+
             yield from asyncio.sleep(.5)
 
     def module_deinit(self):
