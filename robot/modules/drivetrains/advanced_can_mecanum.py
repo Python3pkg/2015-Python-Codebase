@@ -320,7 +320,7 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .1,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .2,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
         if self.USE_GYRO:

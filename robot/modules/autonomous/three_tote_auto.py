@@ -17,6 +17,7 @@ class ThreeToteAuto(yeti.Module):
     def module_init(self):
         self.drivetrain_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.drivetrain_sensor_input = datastreams.get_datastream("drivetrain_sensor_input")
+        self.drivetrain_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
         self.elevator_setpoint_datastream = datastreams.get_datastream("elevator_setpoint")
         self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
         wpilib.SmartDashboard.putNumber("pause_duration", 0)
@@ -56,11 +57,20 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
+        # Increase translation tolerance to stop any movement.
+        self.drivetrain_config_datastream.push({"trans-tolerance": 1})
+
         # Grab tote.
         yield from call_public_coroutine("elevator.goto_bottom")
 
-        # Set the tote to lift before returning
-        call_public_method("elevator.set_setpoint", 1)
+        # Lift tote slightly
+        yield from call_public_coroutine("elevator.goto_pos", .5)
+
+        # Decrease translation tolerance back to normal.
+        self.drivetrain_config_datastream.push({"trans-tolerance": .2})
+
+        # Set elevator to lift before exiting
+        call_public_method("elevator.set_setpoint", 2)
 
     @asyncio.coroutine
     def move_container(self, y_pos):
