@@ -1,0 +1,1 @@
+netcat\nc.exe FlatMountainPi.local 5810 | mplayer\mplayer.exe -x 1400 -y 800 -nosound -fps 100 -demuxer +h264es -cache 1024 -

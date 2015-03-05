@@ -258,7 +258,7 @@ class AdvancedCANMecanum(yeti.Module):
     # GYRO CONF
 
     # Use Gyro
-    USE_GYRO = True
+    USE_GYRO = False
 
     ROT_RATE_ENABLED = False
     # Rotation rate PID Values
