@@ -11,7 +11,7 @@ class EndOfAutoException(Exception):
 
 class ThreeToteAuto(yeti.Module):
 
-    PAUSE = 1
+    PAUSE = 0
     auto_start_timestamp = 0
 
     def module_init(self):
@@ -45,6 +45,11 @@ class ThreeToteAuto(yeti.Module):
 
     @asyncio.coroutine
     def get_tote(self, y_pos):
+        """
+        If we are farther than 6 inches away from the tote, raise forks to home position and drive to 6 inches away.
+        Drive to the tote. Once there, lower forks to the bottom. Then set them to raise to 2, waiting for
+        them to be at least .5 before exiting.
+        """
         self.report("Getting tote at y={}".format(y_pos))
 
         # If we have room, raise forks and close in on tote.
@@ -58,7 +63,7 @@ class ThreeToteAuto(yeti.Module):
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
         # Increase translation tolerance to stop any movement.
-        self.drivetrain_config_datastream.push({"trans-tolerance": 1})
+        self.drivetrain_config_datastream.push({"trans_tolerance": 1})
 
         # Grab tote.
         yield from call_public_coroutine("elevator.goto_bottom")
@@ -67,13 +72,18 @@ class ThreeToteAuto(yeti.Module):
         yield from call_public_coroutine("elevator.goto_pos", .5)
 
         # Decrease translation tolerance back to normal.
-        self.drivetrain_config_datastream.push({"trans-tolerance": .2})
+        self.drivetrain_config_datastream.push({"trans_tolerance": .5})
 
         # Set elevator to lift before exiting
         call_public_method("elevator.set_setpoint", 2)
 
     @asyncio.coroutine
     def move_container(self, y_pos):
+        """
+        Drive to clear the container in the x direction and just before the container in the y direction.
+        Once we clear on the x axis, drive to the y coordinate of the container. Then drive back to x=0
+        and return.
+        """
         self.report("Moving container at y={}".format(y_pos))
 
         # Set the x and y setpoint to off the corner of the container (If it had a corner!)
@@ -81,29 +91,34 @@ class ThreeToteAuto(yeti.Module):
         self.check_mode()
 
         # Wait until we clear the container (cutting the corner slightly)
-        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
+        while self.drivetrain_sensor_input.get().get("x_pos") < 1:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
-        # Set the correct y_pos
-        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos})
+        # Set y_pos a little ahead of the container
+        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
 
         # Wait for x to be in-place
         yield from call_public_coroutine("drivetrain.wait_for_x")
 
         # Wait for y to be close enough
-        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - .5:
+        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - 1:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
-        # Move container, waiting for x
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0})
-        yield from call_public_coroutine("drivetrain.wait_for_x")
+        # Abort and let the next procedure take over
+        return
 
     @asyncio.coroutine
     def score_stack(self, stack_x_pos):
+        """
+        Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
+        """
 
         self.report("Scoring stack at x={}".format(stack_x_pos))
+
+        # Start lowering the forks
+        call_public_method("elevator.set_setpoint", .5)
 
         # Strafe to stack x pos
         self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})

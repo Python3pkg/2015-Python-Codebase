@@ -9,11 +9,9 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class TwoPieceAuto(yeti.Module):
+class OnePieceAuto(yeti.Module):
     """
-    This is a two-piece autonomous mode. It lifts the tote, strafe-turns to capture the RC,
-    and drives to the auto zone. It averages about 4.4 seconds for the sequence and should work in all staging zones.
-    It probably won't work for unloading the stack at the end.
+    This is a one-piece autonomous mode. It lifts a game piece and moves into the auto zone, rotating on the way.
     """
 
     DO_PAUSES = False
@@ -48,24 +46,20 @@ class TwoPieceAuto(yeti.Module):
             call_public_method("drivetrain.reset_sensor_input")
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
 
-
-            # Grab tote
+            # Grab item
             yield from call_public_coroutine("elevator.goto_bottom")
             self.check_mode()
             yield from call_public_coroutine("elevator.goto_pos", 5)
             self.check_mode()
             yield from self.do_pause()
 
-            # Strafe-turn to capture container
-            self.logger.info("Drive phase 1")
-            self.drivetrain_setpoint_datastream.push({"x_pos": -1.5, "y_pos": 2.5, "r_pos": -45})
-            yield from call_public_coroutine("drivetrain.wait_for_xyr")
+            # Drive to x=4, spinning 90 degrees clockwise
+            self.drivetrain_setpoint_datastream.push({"x_pos": 4, "r_pos": -90})
+            yield from call_public_coroutine("drivetrain.wait_for_r")
             self.check_mode()
-            yield from self.do_pause()
 
-            # Drive to auto zone at x=8.5
-            self.logger.info("Drive phase 2")
-            self.drivetrain_setpoint_datastream.push({"x_pos": 10.5, "r_pos": -90})
+            # Drive to auto zone at x=10.5
+            self.drivetrain_setpoint_datastream.push({"x_pos": 10.5})
             yield from call_public_coroutine("drivetrain.wait_for_xyr")
             self.check_mode()
 
@@ -75,6 +69,7 @@ class TwoPieceAuto(yeti.Module):
                 yield from asyncio.sleep(.5)
         except EndOfAutoException:
             self.logger.info("Aborted Autonomous mode")
+
 
 
 

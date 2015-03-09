@@ -94,11 +94,10 @@ class AdvancedElevator(yeti.Module):
     ####################################
     # CONFIGURATION
 
-    # The list of CAN ids for the CAN Jaguars
-    # First value is assumed to be master, all others will be slaves
+    # The CAN id for the CAN Jaguar
     MASTER_CAN_ID = 10
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
     NT_DEBUG_OUT = True
 
     # Encoder Config
@@ -191,6 +190,7 @@ class AdvancedElevator(yeti.Module):
                 break
             if not gamemode.is_autonomous():
                 break
+            self.set_setpoint(value)
             yield from asyncio.sleep(.1)
         self.logger.info("End goto {}".format(value))
 

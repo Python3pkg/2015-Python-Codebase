@@ -21,8 +21,8 @@ options_frame = Frame(mainframe, width=200)
 options_frame.grid(column=2, row=0, sticky=(N, W, E, S))
 
 # Start networktables
-NetworkTable.setIPAddress("roborio-4819.local")
-#NetworkTable.setIPAddress("127.0.0.1")
+#NetworkTable.setIPAddress("roborio-4819.local")
+NetworkTable.setIPAddress("127.0.0.1")
 NetworkTable.setClientMode()
 NetworkTable.initialize()
 
@@ -39,6 +39,7 @@ def update_listbox(listbox, newdata):
     # Figure out what entry to select when we are done
     sel_ids = listbox.curselection()
     new_selected_index = 0
+
     if len(sel_ids) > 0:
         new_selected_index = sel_ids[0]
 

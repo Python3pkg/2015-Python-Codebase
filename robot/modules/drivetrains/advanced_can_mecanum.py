@@ -216,7 +216,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -258,7 +258,7 @@ class AdvancedCANMecanum(yeti.Module):
     # GYRO CONF
 
     # Use Gyro
-    USE_GYRO = False
+    USE_GYRO = True
 
     ROT_RATE_ENABLED = False
     # Rotation rate PID Values
@@ -303,7 +303,6 @@ class AdvancedCANMecanum(yeti.Module):
                 controller = SimulatedCANJaguar(motor_id)
             else:
                 controller = wpilib.CANJaguar(motor_id)
-            controller.setNeuteralMode(wpilib.CANJaguar.NeutralMode.Brake)
             self.referee.watch(controller)
             self.motor_controllers.append(controller)
         self.set_speed_mode()
@@ -320,7 +319,7 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .2,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .5,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
         if self.USE_GYRO:
@@ -755,11 +754,17 @@ class AdvancedCANMecanum(yeti.Module):
                 right_percentage = signing_square(right_percentage)
                 ctrclockwise_percentage = signing_square(ctrclockwise_percentage)
 
+            # If button 10 is pressed, Zero output
+            if self.joystick.getRawButton(10):
+                forward_fps = 0
+                right_fps = 0
+                ctrclockwise_dps = 0
             # If button 1 is pressed, use faster speed setting
-            if self.joystick.getRawButton(1):
+            elif self.joystick.getRawButton(1):
                 forward_fps = forward_percentage * self.FAST_JOYSTICK_Y_FPS
                 right_fps = right_percentage * self.FAST_JOYSTICK_X_FPS
                 ctrclockwise_dps = ctrclockwise_percentage * self.FAST_JOYSTICK_R_DPS
+            # Otherwise, use slower speed setting
             else:
                 forward_fps = forward_percentage * self.SLOW_JOYSTICK_Y_FPS
                 right_fps = right_percentage * self.SLOW_JOYSTICK_X_FPS

@@ -73,9 +73,9 @@ class BasicCANMecanum(yeti.Module):
     @asyncio.coroutine
     def joystick_loop(self):
         while gamemode.is_teleop():
-            forward_percentage = -self.joystick.getY()
-            right_percentage = self.joystick.getX()
-            clockwise_percentage = self.joystick.getZ()
+            forward_percentage = self.joystick.getY()
+            right_percentage = -self.joystick.getX()
+            clockwise_percentage = -self.joystick.getZ()
 
             #Threshold values
             forward_percentage = threshold_value(forward_percentage, .10)
