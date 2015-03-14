@@ -351,7 +351,7 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .5,
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .2,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
     @public_object(prefix="drivetrain")
@@ -641,12 +641,13 @@ class AdvancedCANMecanum(yeti.Module):
                     self.motor_controllers[1].set(rear_left_out)
                     self.motor_controllers[2].set(-front_right_out)
                     self.motor_controllers[3].set(-rear_right_out)
-
+            else:
                 if self.auto_drive_enabled:
                     self.auto_drive_disable()
-                self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0, "enable_esp": True})
-                for controller in self.motor_controllers:
-                    controller.set(0)
+                else:
+                    self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0, "enable_esp": True})
+                    for controller in self.motor_controllers:
+                        controller.set(0)
 
 
 

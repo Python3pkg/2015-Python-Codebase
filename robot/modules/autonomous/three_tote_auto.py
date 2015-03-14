@@ -87,19 +87,16 @@ class ThreeToteAuto(yeti.Module):
         self.report("Moving container at y={}".format(y_pos))
 
         # Set the x and y setpoint to off the corner of the container (If it had a corner!)
-        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 1, "r_pos": 0})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
         self.check_mode()
 
-        # Wait until we clear the container (cutting the corner slightly)
-        while self.drivetrain_sensor_input.get().get("x_pos") < 1:
+        # Wait until we clear the container
+        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
         # Set y_pos a little ahead of the container
         self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
-
-        # Wait for x to be in-place
-        yield from call_public_coroutine("drivetrain.wait_for_x")
 
         # Wait for y to be close enough
         while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - 1:
