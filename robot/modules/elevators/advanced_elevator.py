@@ -14,7 +14,7 @@ class SimulatedCANJaguar():
     STARTING_POS = 5
 
     def __init__(self, CAN_ID):
-        self.talon = wpilib.Talon(CAN_ID - 10)
+        self.talon = wpilib.Talon(CAN_ID - 9)
         self.position = self.STARTING_POS
         self.last_update = wpilib.Timer.getFPGATimestamp()
         self.speed = 0
@@ -129,13 +129,30 @@ class AdvancedElevator(yeti.Module):
         self.master_jaguar.setPercentModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION)
         self.referee.watch(self.master_jaguar)
 
+        # Setup mountain talon
+        self.mountain_talon = wpilib.Talon(0)
+        self.referee.watch(self.mountain_talon)
+
+    # Mountain position measurments:
+    # Fakes an encoder
+    MOUNTAIN_P = 3
+    MOUNTAIN_OPEN_POS = .4
+    MOUNTAIN_CLOSED_POS = 0
+
+    # Initialize as open so that we are sure it closes.
+    mountain_pos = MOUNTAIN_OPEN_POS
+    mountain_setpoint = MOUNTAIN_CLOSED_POS
 
     @yeti.autorun_coroutine
     @asyncio.coroutine
     def run_loop(self):
+        last_mountain_out = 0
+        last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
+
         self.setpoint = self.get_position()
         self.master_jaguar.enableControl()
         while True:
+            yield from asyncio.sleep(.05)
 
             if self.NT_DEBUG_OUT:
                 wpilib.SmartDashboard.putNumber("elvevator_pos", self.get_position())
@@ -145,6 +162,11 @@ class AdvancedElevator(yeti.Module):
             if not self.master_jaguar.getForwardLimitOK():
                 self.calibration_ref = -self.master_jaguar.getPosition()
                 self.calibrated = True
+
+            # Get delta time
+            current_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
+            delta_time = current_cycle_timestamp - last_cycle_timestamp
+            last_cycle_timestamp = current_cycle_timestamp
 
             output = 0
             if gamemode.is_teleop():
@@ -169,11 +191,37 @@ class AdvancedElevator(yeti.Module):
             self.master_jaguar.set(-output)
             wpilib.SmartDashboard.putNumber("elevator output", output)
 
-            yield from asyncio.sleep(.05)
+            # Do mountain mover
+
+            # Handle joystick
+            if gamemode.is_enabled():
+                if self.joystick.getRawButton(1):
+                    self.mountain_setpoint = self.MOUNTAIN_OPEN_POS
+                else:
+                    self.mountain_setpoint = self.MOUNTAIN_CLOSED_POS
+
+            # Calculate current position
+            self.mountain_pos += last_mountain_out * delta_time
+
+            delta = self.mountain_setpoint - self.mountain_pos
+            if abs(delta) > .05 and gamemode.is_enabled():
+                mountain_out = delta * self.MOUNTAIN_P
+            else:
+                mountain_out = 0
+
+            if mountain_out > 1:
+                mountain_out = 1
+            elif mountain_out < -1:
+                mountain_out = -1
+
+            self.mountain_talon.set(mountain_out)
+            last_mountain_out = mountain_out
+
         self.master_jaguar.disableControl()
 
     def get_position(self):
         return (-self.master_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
+
 
     @public_object(prefix="elevator")
     def set_setpoint(self, value):

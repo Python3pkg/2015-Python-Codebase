@@ -12,7 +12,7 @@ class SimulatedCANJaguar():
     MAX_RPM_OUTPUT = 500
 
     def __init__(self, CAN_ID):
-        self.talon = wpilib.Talon(CAN_ID - 10)
+        self.talon = wpilib.Talon(CAN_ID - 9)
         self.position = 0
         self.last_update = wpilib.Timer.getFPGATimestamp()
         self.speed = 0
