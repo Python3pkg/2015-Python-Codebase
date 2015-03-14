@@ -46,6 +46,7 @@ class TwoPieceAuto(yeti.Module):
 
             # Zero drive setpoints
             call_public_method("drivetrain.reset_sensor_input")
+            call_public_method("drivetrain.reset_auto_config")
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
 
 

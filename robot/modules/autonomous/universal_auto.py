@@ -1,6 +1,7 @@
 import asyncio
 import yeti
 import wpilib
+import json
 
 from yeti.interfaces import gamemode, datastreams
 from yeti.interfaces.object_proxy import call_public_method, call_public_coroutine
@@ -9,7 +10,7 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class ThreeToteAuto(yeti.Module):
+class UniversalAuto(yeti.Module):
 
     PAUSE = 0
     auto_start_timestamp = 0
@@ -20,7 +21,76 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
         self.elevator_setpoint_datastream = datastreams.get_datastream("elevator_setpoint")
         self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
-        wpilib.SmartDashboard.putNumber("pause_duration", 0)
+        config_options = [("tote_one", 0), ("container_one", 0),
+                          ("tote_two", 0), ("container_two", 0),
+                          ("tote_three", 0), ("container_three", 0),
+                          ("start_delay", 0), ("end_routine", 0)]
+        for key, value in config_options:
+            if wpilib.SmartDashboard.getNumber("autonomous/" + key, value) == value:
+                wpilib.SmartDashboard.putNumber("autonomous/" + key, value)
+        wpilib.SmartDashboard.putString("autonomous/config_keys", json.dumps([k for k, v in config_options]))
+
+    @asyncio.coroutine
+    @gamemode.autonomous_task
+    def run_auto(self):
+        try:
+            tote_y_coordinates = [0, 6.5, 13]
+            container_y_coordinates = [2.7, 9.2, 15.7]
+
+            tote_commands = [
+                wpilib.SmartDashboard.getNumber("autonomous/tote_one"),
+                wpilib.SmartDashboard.getNumber("autonomous/tote_two"),
+                wpilib.SmartDashboard.getNumber("autonomous/tote_three")]
+
+            container_commands = [
+                wpilib.SmartDashboard.getNumber("autonomous/container_one"),
+                wpilib.SmartDashboard.getNumber("autonomous/container_two"),
+                wpilib.SmartDashboard.getNumber("autonomous/container_three")]
+
+            start_delay = wpilib.SmartDashboard.getNumber("autonomous/start_delay")
+            end_routine = wpilib.SmartDashboard.getNumber("autonomous/end_routine")
+
+            # Reset and enable autonomous drivetrain
+            call_public_method("drivetrain.reset_sensor_input")
+            call_public_method("drivetrain.reset_auto_config")
+            call_public_method("drivetrain.auto_drive_enable")
+            self.reset_auto_time()
+
+            # If start_delay, wait for it before proceeding
+            if start_delay > 0:
+                self.logger.info("Start delay enabled: sleeping for {} seconds.".format(start_delay))
+                yield from asyncio.sleep(start_delay)
+
+            # Zip our lists together and iterate through them.
+
+            for tote_command, tote_y, container_command, container_y in\
+                zip(tote_commands, tote_y_coordinates, container_commands, container_y_coordinates):
+
+                # Do the tote command
+                if tote_command == 0:
+                    pass
+                elif tote_command == 1:
+                    yield from self.get_tote(tote_y)
+
+                # Do the container command
+                if container_command == 0:
+                    pass
+                elif container_command == 1:
+                    yield from self.move_container(container_y)
+
+            # Once we are done iterating, do the score command
+            if end_routine == 0:
+                pass
+            elif end_routine == 1:
+                yield from self.score_stack(9)
+
+            self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
+
+            call_public_method("drivetrain.auto_drive_disable")
+            while gamemode.is_autonomous():
+                yield from asyncio.sleep(.5)
+        except EndOfAutoException:
+            self.logger.info("Aborted Autonomous mode")
 
     def check_mode(self):
         if not gamemode.is_autonomous():
@@ -133,35 +203,7 @@ class ThreeToteAuto(yeti.Module):
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
 
-    @asyncio.coroutine
-    @gamemode.autonomous_task
-    def run_auto(self):
-        try:
-            self.PAUSE = wpilib.SmartDashboard.getNumber("pause_duration")
-            call_public_method("drivetrain.auto_drive_enable")
-            call_public_method("drivetrain.reset_sensor_input")
-            call_public_method("drivetrain.reset_auto_config")
-            self.reset_auto_time()
 
-            yield from self.get_tote(0)
-            yield from self.do_pause()
-            yield from self.move_container(2.7)
-            yield from self.do_pause()
-            yield from self.get_tote(6.5)
-            yield from self.do_pause()
-            yield from self.move_container(9.2)
-            yield from self.do_pause()
-            yield from self.get_tote(13)
-            yield from self.do_pause()
-            yield from self.score_stack(8)
-
-            self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
-
-            call_public_method("drivetrain.auto_drive_disable")
-            while gamemode.is_autonomous():
-                yield from asyncio.sleep(.5)
-        except EndOfAutoException:
-            self.logger.info("Aborted Autonomous mode")
 
 
 

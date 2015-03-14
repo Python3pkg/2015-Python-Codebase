@@ -80,7 +80,8 @@ class SimulatedCANJaguar():
     def free(self):
         self.talon.free()
 
-#Helper funcs
+
+# Helper funcs
 def threshold_value(value, threshold):
     if abs(value) <= threshold:
         value = 0
@@ -216,7 +217,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -259,18 +260,6 @@ class AdvancedCANMecanum(yeti.Module):
 
     # Use Gyro
     USE_GYRO = True
-
-    ROT_RATE_ENABLED = False
-    # Rotation rate PID Values
-    ROT_RATE_P = 0.100
-    ROT_RATE_I = 0.000
-    ROT_RATE_D = 0.000
-
-    ROT_LOCK_ENABLED = False
-    # Rotation lock PID Values
-    ROT_LOCK_P = 1.000
-    ROT_LOCK_I = 0.100
-    ROT_LOCK_D = 0.000
 
     ########################
     # DEBUG OPTIONS
@@ -319,8 +308,7 @@ class AdvancedCANMecanum(yeti.Module):
 
         self.autodrive_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.autodrive_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .5,
-                                               "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
+        self.reset_auto_config()
 
         if self.USE_GYRO:
             self.logger.info("Starting Gyro Init")
@@ -328,31 +316,7 @@ class AdvancedCANMecanum(yeti.Module):
             self.logger.info("Finished Gyro Init")
             self.referee.watch(self.gyro)
 
-        if self.ROT_RATE_ENABLED:
-            # Setup rotational rate PID controller
-            def rate_pid_source():
-                return self.sensor_input_datastream.get().get("r_speed", 0)
-
-            def rate_pid_out(val):
-                self.gyro_rate_pid_out = val
-
-            self.rot_rate_pid_controller = wpilib.PIDController(self.ROT_RATE_P, self.ROT_RATE_I, self.ROT_RATE_D, 1, rate_pid_source, rate_pid_out)
-            self.rot_rate_pid_controller.setOutputRange(-360, 360)
-
-        if self.ROT_LOCK_ENABLED:
-            # Setup rotational lock PID controller
-            def pos_pid_source():
-                return self.sensor_input_datastream.get().get("r_pos", 0)
-
-            def pos_pid_out(val):
-                self.gyro_pos_lock_pid_out = val
-
-            self.rot_lock_pid_controller = wpilib.PIDController(self.ROT_LOCK_P, self.ROT_LOCK_I, self.ROT_LOCK_D, pos_pid_source, pos_pid_out)
-            self.rot_lock_pid_controller.setOutputRange(-360, 360)
-
-    gyro_rate_pid_out = 0
-    gyro_pos_lock_pid_out = 0
-
+    reset_jaguar_input_flag = False
     def set_speed_mode(self):
         if self.motor_controllers[0].getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
             self.logger.info("Set jaguars to speed mode.")
@@ -360,7 +324,7 @@ class AdvancedCANMecanum(yeti.Module):
                 controller.disableControl()
                 controller.setSpeedModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION, self.JAG_P, self.JAG_I, self.JAG_D)
                 controller.enableControl()
-                self.reset_jaguar_input = True
+                self.reset_jaguar_input_flag = True
 
     def set_percent_mode(self):
         if self.motor_controllers[0].getControlMode() != wpilib.CANJaguar.ControlMode.PercentVbus:
@@ -369,17 +333,26 @@ class AdvancedCANMecanum(yeti.Module):
                 controller.disableControl()
                 controller.setPercentModeQuadEncoder(self.ENCODER_TICKS_PER_ROTATION)
                 controller.enableControl()
-                self.reset_jaguar_input = True
+                self.reset_jaguar_input_flag = True
 
     reset_sensor_input_flag = False
-    reset_jaguar_input = False
-
+    reset_x_pos = 0
+    reset_y_pos = 0
+    reset_r_pos = 0
     @public_object(prefix="drivetrain")
-    def reset_sensor_input(self):
+    def reset_sensor_input(self, x_pos=0, y_pos=0, r_pos=0):
+        self.reset_x_pos = x_pos
+        self.reset_y_pos = y_pos
+        self.reset_r_pos = r_pos
         self.sensor_input_datastream.push({"x_pos": 0, "x_speed": 0,
                                            "y_pos": 0, "y_speed": 0,
                                            "r_pos": 0, "r_speed": 0})
         self.reset_sensor_input_flag = True
+
+    @public_object(prefix="drivetrain")
+    def reset_auto_config(self):
+        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .5,
+                                               "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
@@ -445,12 +418,11 @@ class AdvancedCANMecanum(yeti.Module):
 
     @yeti.autorun_coroutine
     @asyncio.coroutine
-    def auto_drive_loop(self):
+    def run_loop(self):
 
         last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
         self.reset_sensor_input_flag = True
-        self.reset_jaguar_input = True
-        was_enabled = False
+        self.reset_jaguar_input_flag = True
         while True:
             yield from asyncio.sleep(.05)
 
@@ -459,19 +431,19 @@ class AdvancedCANMecanum(yeti.Module):
 
             # Handle value reset
             if self.reset_sensor_input_flag:
-                last_x_pos = 0
-                last_y_pos = 0
-                last_r_pos = 0
+                last_x_pos = self.reset_x_pos
+                last_y_pos = self.reset_y_pos
+                last_r_pos = self.reset_r_pos
                 if self.USE_GYRO:
                     self.gyro.reset()
                 last_gyro_angle = 0
                 self.reset_sensor_input_flag = False
 
             # Handle jaguar encoder value reset
-            if self.reset_jaguar_input:
+            if self.reset_jaguar_input_flag:
                 yield from asyncio.sleep(.1)
                 last_wheel_positions = [c.getPosition() for c in self.motor_controllers]
-                self.reset_jaguar_input = False
+                self.reset_jaguar_input_flag = False
 
             # Get delta time
             current_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
@@ -609,16 +581,6 @@ class AdvancedCANMecanum(yeti.Module):
 
             if gamemode.is_enabled():
 
-                if not was_enabled:
-                    # Enable the gyro rate pid loop if it is initialized
-                    if self.ROT_RATE_ENABLED:
-                        self.rot_rate_pid_controller.enable()
-                    if self.ROT_LOCK_ENABLED:
-                        self.rot_lock_pid_controller.disable()
-
-                    rotation_locked = False
-                    was_enabled = True
-
                 # Get control inputs
                 control_data = self.control_datastream.get()
                 forward_speed_in = control_data.get("forward_fps", 0)
@@ -635,36 +597,11 @@ class AdvancedCANMecanum(yeti.Module):
                 if enable_esp:
                     self.set_speed_mode()
 
-                    # Rotation lock enable/disable
-                    if self.ROT_LOCK_ENABLED:
-                        if ctrclockwise_speed_in == 0:
-                            if not rotation_locked:
-                                rotation_locked = True
-                                self.rot_lock_pid_controller.setSetpoint(r_pos)
-                                self.rot_lock_pid_controller.enable()
-                                if self.ROT_RATE_ENABLED:
-                                    self.rot_rate_pid_controller.disable()
-                        else:
-                            if rotation_locked:
-                                rotation_locked = False
-                                self.rot_lock_pid_controller.disable()
-                                if self.ROT_RATE_ENABLED:
-                                    self.rot_rate_pid_controller.enable()
-
-                    # Get rotation source
-                    if self.ROT_LOCK_ENABLED and rotation_locked:
-                        ctrclockwise_speed_out = self.gyro_pos_lock_pid_out
-                    elif self.ROT_RATE_ENABLED:
-                        self.rot_rate_pid_controller.setSetpoint(ctrclockwise_speed_in)
-                        ctrclockwise_speed_out = self.gyro_rate_pid_out
-                    else:
-                        ctrclockwise_speed_out = ctrclockwise_speed_in
-
                     # Inverse kinematics to get mecanum values
-                    front_left_out = forward_speed_in + right_speed_in - (ctrclockwise_speed_out * self.mecanum_kinematic_k)
-                    rear_left_out = forward_speed_in - right_speed_in - (ctrclockwise_speed_out * self.mecanum_kinematic_k)
-                    front_right_out = forward_speed_in - right_speed_in + (ctrclockwise_speed_out * self.mecanum_kinematic_k)
-                    rear_right_out = forward_speed_in + right_speed_in + (ctrclockwise_speed_out * self.mecanum_kinematic_k)
+                    front_left_out = forward_speed_in + right_speed_in - (ctrclockwise_speed_in * self.mecanum_kinematic_k)
+                    rear_left_out = forward_speed_in - right_speed_in - (ctrclockwise_speed_in * self.mecanum_kinematic_k)
+                    front_right_out = forward_speed_in - right_speed_in + (ctrclockwise_speed_in * self.mecanum_kinematic_k)
+                    rear_right_out = forward_speed_in + right_speed_in + (ctrclockwise_speed_in * self.mecanum_kinematic_k)
 
                     # convert from fps to rpm
                     front_left_out *= self.FPS_TO_RPM
@@ -681,9 +618,9 @@ class AdvancedCANMecanum(yeti.Module):
                 else:
                     self.set_percent_mode()
 
-                    forward_percentage = forward_speed_in / 14
-                    right_percentage = right_speed_in / 14
-                    ctrclockwise_percentage = ctrclockwise_speed_in / 360
+                    forward_percentage = forward_speed_in / 10
+                    right_percentage = right_speed_in / 10
+                    ctrclockwise_percentage = ctrclockwise_speed_in / 270
 
                     # Inverse kinematics to get mecanum values
                     front_left_out = forward_percentage - ctrclockwise_percentage + right_percentage
@@ -705,20 +642,9 @@ class AdvancedCANMecanum(yeti.Module):
                     self.motor_controllers[2].set(-front_right_out)
                     self.motor_controllers[3].set(-rear_right_out)
 
-            else:
-                if was_enabled:
-                    # Disable pid if used
-                    if self.ROT_RATE_ENABLED:
-                        self.rot_rate_pid_controller.disable()
-                    if self.ROT_LOCK_ENABLED:
-                        self.rot_lock_pid_controller.disable()
-
-                    self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0, "enable_esp": True})
-                    was_enabled = False
-
                 if self.auto_drive_enabled:
                     self.auto_drive_disable()
-                self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0})
+                self.control_datastream.push({"forward_fps": 0, "right_fps": 0, "ctrclockwise_dps": 0, "enable_esp": True})
                 for controller in self.motor_controllers:
                     controller.set(0)
 
@@ -777,11 +703,3 @@ class AdvancedCANMecanum(yeti.Module):
             self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "ctrclockwise_dps": ctrclockwise_dps, "enable_esp": enable_esp})
 
             yield from asyncio.sleep(.05)
-
-
-    def module_deinit(self):
-        # Disable pid if used
-        if self.ROT_RATE_ENABLED:
-            self.rot_rate_pid_controller.disable()
-        if self.ROT_LOCK_ENABLED:
-            self.rot_lock_pid_controller.disable()

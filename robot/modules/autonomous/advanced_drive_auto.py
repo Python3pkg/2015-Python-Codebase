@@ -36,6 +36,7 @@ class AdvancecdDriveAuto(yeti.Module):
 
         self.drivetrain_control.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
         call_public_method("drivetrain.reset_sensor_input")
+        call_public_method("drivetrain.reset_auto_config")
         call_public_method("drivetrain.auto_drive_enable")
 
         yield from asyncio.sleep(start_delay)
