@@ -53,29 +53,30 @@ class ThreeToteAuto(yeti.Module):
         self.report("Getting tote at y={}".format(y_pos))
 
         # If we have room, raise forks and close in on tote.
-        if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - .5:
-            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - .5, "r_pos": 0})
-            yield from call_public_coroutine("elevator.goto_home")
+        if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - 1.7:
+            self.logger.info("waiting!")
+            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - 1.7, "r_pos": 0})
+            yield from call_public_coroutine("elevator.goto_pos", 2.5)
             yield from call_public_coroutine("drivetrain.wait_for_x")
 
         # Drive to tote.
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
-        # Increase translation tolerance to stop any movement.
-        self.drivetrain_config_datastream.push({"trans_tolerance": 1})
+        # Increase y tolerance to stop any movement.
+        self.drivetrain_config_datastream.push({"y_tolerance": 1, "x_tolerance": 1})
 
         # Grab tote.
-        yield from call_public_coroutine("elevator.goto_bottom")
+        yield from call_public_coroutine("elevator.goto_pos", .3)
 
         # Lift tote slightly
-        yield from call_public_coroutine("elevator.goto_pos", .5)
+        yield from call_public_coroutine("elevator.goto_pos", .8)
 
         # Decrease translation tolerance back to normal.
-        self.drivetrain_config_datastream.push({"trans_tolerance": .5})
+        call_public_method("drivetrain.reset_auto_config")
 
         # Set elevator to lift before exiting
-        call_public_method("elevator.set_setpoint", 2)
+        call_public_method("elevator.set_setpoint", 2.5)
 
     @asyncio.coroutine
     def move_container(self, y_pos):
@@ -99,7 +100,7 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
 
         # Wait for y to be close enough
-        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - 1:
+        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
@@ -115,14 +116,14 @@ class ThreeToteAuto(yeti.Module):
         self.report("Scoring stack at x={}".format(stack_x_pos))
 
         # Start lowering the forks
-        call_public_method("elevator.set_setpoint", .5)
+        call_public_method("elevator.set_setpoint", 1)
 
         # Strafe to stack x pos
         self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
         # Drop stack
-        yield from call_public_coroutine("elevator.goto_bottom")
+        yield from call_public_coroutine("elevator.goto_pos", .4)
 
         # Get stack y and back off
         stack_y = self.drivetrain_sensor_input.get()["y_pos"]
@@ -146,9 +147,9 @@ class ThreeToteAuto(yeti.Module):
             yield from self.do_pause()
             yield from self.get_tote(6.5)
             yield from self.do_pause()
-            yield from self.move_container(9.2)
+            #yield from self.move_container(9.2)
             yield from self.do_pause()
-            yield from self.get_tote(13)
+            #yield from self.get_tote(13)
             yield from self.do_pause()
             yield from self.score_stack(8)
 

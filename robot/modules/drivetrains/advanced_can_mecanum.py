@@ -24,6 +24,7 @@ class SimulatedCANJaguar():
 
     def setSpeedModeQuadEncoder(self, codesPerRev, p, i, d):
         self.mode = wpilib.CANJaguar.ControlMode.Speed
+        self.setPID(p, i, d)
         self._reset_physics()
 
     def setPercentModeQuadEncoder(self, codesPerRev):
@@ -48,6 +49,9 @@ class SimulatedCANJaguar():
 
     def get(self):
         return self.speed
+
+    def setPID(self, p, i, d):
+        print("Set P: {}, I: {}, D{}".format(p, i, d))
 
     def getControlMode(self):
         return self.mode
@@ -217,7 +221,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -242,7 +246,7 @@ class AdvancedCANMecanum(yeti.Module):
     # Rear Left
     # Front Right
     # Rear Right
-    CAN_IDS = [12, 14, 11, 13]
+    CAN_IDS = [12, 14, 15, 13]
 
     # Jagur PID Values
     JAG_P = 1.000
@@ -265,7 +269,7 @@ class AdvancedCANMecanum(yeti.Module):
     # DEBUG OPTIONS
 
     # Enables submitting debug metrics to NetworkTables
-    DEBUG_NT_OUT = True
+    DEBUG_NT_OUT = False
 
     ########################
     # PRE-CALCULATED VALUES
@@ -316,6 +320,12 @@ class AdvancedCANMecanum(yeti.Module):
             self.logger.info("Finished Gyro Init")
             self.referee.watch(self.gyro)
 
+    @public_object(prefix="drivetrain")
+    def set_pid(self, p, i, d):
+        self.JAG_P = p
+        self.JAG_I = i
+        self.JAG_D = d
+
     reset_jaguar_input_flag = False
     def set_speed_mode(self):
         if self.motor_controllers[0].getControlMode() != wpilib.CANJaguar.ControlMode.Speed:
@@ -351,21 +361,22 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_trans_speed": 14, "max_trans_acceleration": 7, "trans_tolerance": .2,
+        self.autodrive_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 7, "y_tolerance": .2,
+                                               "max_x_speed": 14, "max_x_acceleration": 5, "x_tolerance": .2,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
         x_pos = self.sensor_input_datastream.get().get("x_pos", 0)
         x_setpoint = self.autodrive_setpoint_datastream.get().get("x_pos", 0)
-        x_tolerance = self.autodrive_config_datastream.get()["trans_tolerance"]
+        x_tolerance = self.autodrive_config_datastream.get()["x_tolerance"]
         return abs(x_pos - x_setpoint) < x_tolerance
 
     @public_object(prefix="drivetrain")
     def y_at_setpoint(self):
         y_pos = self.sensor_input_datastream.get().get("y_pos", 0)
         y_setpoint = self.autodrive_setpoint_datastream.get().get("y_pos", 0)
-        y_tolerance = self.autodrive_config_datastream.get()["trans_tolerance"]
+        y_tolerance = self.autodrive_config_datastream.get()["y_tolerance"]
         return abs(y_pos - y_setpoint) < y_tolerance
 
     @public_object(prefix="drivetrain")
@@ -423,6 +434,7 @@ class AdvancedCANMecanum(yeti.Module):
         last_cycle_timestamp = wpilib.Timer.getFPGATimestamp()
         self.reset_sensor_input_flag = True
         self.reset_jaguar_input_flag = True
+        was_enabled = False
         while True:
             yield from asyncio.sleep(.05)
 
@@ -478,6 +490,7 @@ class AdvancedCANMecanum(yeti.Module):
             # Get total global rotation from rotation speed
             r_pos = (robot_r_speed * delta_time) + last_r_pos
 
+
             # Convert robot-centric speeds to world-centric speeds
             trans_angle, trans_speed = cartesian_to_polar(robot_x_speed, robot_y_speed)
             world_trans_angle = trans_angle + r_pos
@@ -487,6 +500,7 @@ class AdvancedCANMecanum(yeti.Module):
             # Calculate current xy position
             x_pos = (x_speed * delta_time) + last_x_pos
             y_pos = (y_speed * delta_time) + last_y_pos
+
 
             # If external inputs are configured, override values
             external_input_data = self.external_sensor_input_datastream.get()
@@ -530,11 +544,14 @@ class AdvancedCANMecanum(yeti.Module):
                 setpoint_data = self.autodrive_setpoint_datastream.get()
                 config = self.autodrive_config_datastream.get()
 
-                max_trans_speed = config["max_trans_speed"]
-                max_trans_accel = config["max_trans_acceleration"]
+                max_y_speed = config["max_y_speed"]
+                max_y_accel = config["max_y_acceleration"]
+                max_x_speed = config["max_x_speed"]
+                max_x_accel = config["max_x_acceleration"]
                 max_rot_speed = config["max_rot_speed"]
                 max_rot_accel = config["max_rot_acceleration"]
-                trans_tolerance = config["trans_tolerance"]
+                y_tolerance = config["y_tolerance"]
+                x_tolerance = config["x_tolerance"]
                 rot_tolerance = config["rot_tolerance"]
 
                 setpoint_x_pos = setpoint_data.get("x_pos", 0)
@@ -550,13 +567,13 @@ class AdvancedCANMecanum(yeti.Module):
                 r_pos_delta = setpoint_r_pos - r_pos
 
                 # Use continuous_accel_filter to determine proper speed out.
-                if abs(x_pos_delta) > trans_tolerance:
-                    x_speed_out = continuous_accel_filter(x_pos_delta, x_speed, setpoint_x_speed, max_trans_accel, max_trans_speed, delta_time)
+                if abs(x_pos_delta) > x_tolerance:
+                    x_speed_out = continuous_accel_filter(x_pos_delta, x_speed, setpoint_x_speed, max_x_accel, max_x_speed, delta_time)
                 else:
                     x_speed_out = 0
 
-                if abs(y_pos_delta) > trans_tolerance:
-                    y_speed_out = continuous_accel_filter(y_pos_delta, y_speed, setpoint_y_speed, max_trans_accel, max_trans_speed, delta_time)
+                if abs(y_pos_delta) > y_tolerance:
+                    y_speed_out = continuous_accel_filter(y_pos_delta, y_speed, setpoint_y_speed, max_y_accel, max_y_speed, delta_time)
                 else:
                     y_speed_out = 0
 
@@ -580,6 +597,10 @@ class AdvancedCANMecanum(yeti.Module):
             # Drive output
 
             if gamemode.is_enabled():
+                if not was_enabled:
+                    for jag in self.motor_controllers:
+                        jag.setPID(self.JAG_P, self.JAG_I, self.JAG_D)
+                was_enabled = True
 
                 # Get control inputs
                 control_data = self.control_datastream.get()
@@ -642,6 +663,7 @@ class AdvancedCANMecanum(yeti.Module):
                     self.motor_controllers[2].set(-front_right_out)
                     self.motor_controllers[3].set(-rear_right_out)
             else:
+                was_enabled = False
                 if self.auto_drive_enabled:
                     self.auto_drive_disable()
                 else:

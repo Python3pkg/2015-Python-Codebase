@@ -11,7 +11,7 @@ class SimulatedCANJaguar():
     MAX_RPM_OUTPUT = 120
     FORWARD_LIMIT = 8
     REVERSE_LIMIT = 0
-    STARTING_POS = 5
+    STARTING_POS = 2
 
     def __init__(self, CAN_ID):
         self.talon = wpilib.Talon(CAN_ID - 10)
@@ -97,7 +97,7 @@ class AdvancedElevator(yeti.Module):
     # The CAN id for the CAN Jaguar
     MASTER_CAN_ID = 10
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
     NT_DEBUG_OUT = True
 
     # Encoder Config
