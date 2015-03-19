@@ -21,10 +21,11 @@ class UniversalAuto(yeti.Module):
         self.drivetrain_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
         self.elevator_setpoint_datastream = datastreams.get_datastream("elevator_setpoint")
         self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
-        config_options = [("tote_one", 0), ("container_one", 0),
+        config_options = [("start_delay", 0),
+                          ("tote_one", 0), ("container_one", 0),
                           ("tote_two", 0), ("container_two", 0),
                           ("tote_three", 0), ("container_three", 0),
-                          ("start_delay", 0), ("end_routine", 0)]
+                          ("platform_align", 0), ("end_routine", 0)]
         for key, value in config_options:
             if wpilib.SmartDashboard.getNumber("autonomous/" + key, value) == value:
                 wpilib.SmartDashboard.putNumber("autonomous/" + key, value)
@@ -34,6 +35,7 @@ class UniversalAuto(yeti.Module):
     @gamemode.autonomous_task
     def run_auto(self):
         try:
+            # Get auto config
             tote_y_coordinates = [0, 6.5, 13]
             container_y_coordinates = [2.7, 9.2, 15.7]
 
@@ -48,6 +50,7 @@ class UniversalAuto(yeti.Module):
                 wpilib.SmartDashboard.getNumber("autonomous/container_three")]
 
             start_delay = wpilib.SmartDashboard.getNumber("autonomous/start_delay")
+            platform_align = wpilib.SmartDashboard.getNumber("autonomous/end_routine")
             end_routine = wpilib.SmartDashboard.getNumber("autonomous/end_routine")
 
             # Reset and enable autonomous drivetrain
@@ -61,7 +64,7 @@ class UniversalAuto(yeti.Module):
                 self.logger.info("Start delay enabled: sleeping for {} seconds.".format(start_delay))
                 yield from asyncio.sleep(start_delay)
 
-            # Zip our lists together and iterate through them.
+            # Iterate through gamepiece commands
 
             for tote_command, tote_y, container_command, container_y in\
                 zip(tote_commands, tote_y_coordinates, container_commands, container_y_coordinates):
@@ -78,11 +81,19 @@ class UniversalAuto(yeti.Module):
                 elif container_command == 1:
                     yield from self.move_container(container_y)
 
-            # Once we are done iterating, do the score command
+            # Align to platform if instructed
+            if platform_align == 0:
+                pass
+            elif platform_align == 1:
+                yield from self.platform_align()
+
+            # Perform end routine
             if end_routine == 0:
                 pass
             elif end_routine == 1:
-                yield from self.score_stack(9)
+                yield from self.score_bot()
+            elif end_routine == 2:
+                yield from self.score_stack()
 
             self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
 
@@ -113,6 +124,8 @@ class UniversalAuto(yeti.Module):
     def report(self, msg):
         self.logger.info("{} at {} seconds".format(msg, self.get_auto_time()))
 
+    # Gamepiece routines
+
     @asyncio.coroutine
     def get_tote(self, y_pos):
         """
@@ -123,29 +136,29 @@ class UniversalAuto(yeti.Module):
         self.report("Getting tote at y={}".format(y_pos))
 
         # If we have room, raise forks and close in on tote.
-        if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - .5:
-            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - .5, "r_pos": 0})
-            yield from call_public_coroutine("elevator.goto_home")
+        if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - 1.7:
+            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - 1.7, "r_pos": 0})
+            yield from call_public_coroutine("elevator.goto_pos", 2.5)
             yield from call_public_coroutine("drivetrain.wait_for_x")
 
         # Drive to tote.
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
-        # Increase translation tolerance to stop any movement.
-        self.drivetrain_config_datastream.push({"trans_tolerance": 1})
+        # Increase y tolerance to stop any movement.
+        self.drivetrain_config_datastream.push({"y_tolerance": 1, "x_tolerance": 1})
 
         # Grab tote.
-        yield from call_public_coroutine("elevator.goto_bottom")
+        yield from call_public_coroutine("elevator.goto_pos", .3)
 
         # Lift tote slightly
-        yield from call_public_coroutine("elevator.goto_pos", .5)
+        yield from call_public_coroutine("elevator.goto_pos", .8)
 
         # Decrease translation tolerance back to normal.
-        self.drivetrain_config_datastream.push({"trans_tolerance": .5})
+        call_public_method("drivetrain.reset_auto_config")
 
         # Set elevator to lift before exiting
-        call_public_method("elevator.set_setpoint", 2)
+        call_public_method("elevator.set_setpoint", 2.5)
 
     @asyncio.coroutine
     def move_container(self, y_pos):
@@ -156,42 +169,54 @@ class UniversalAuto(yeti.Module):
         """
         self.report("Moving container at y={}".format(y_pos))
 
-        # Set the x and y setpoint to off the corner of the container (If it had a corner!)
-        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 1, "r_pos": 0})
+        # Strafe to the side of the container
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
         self.check_mode()
 
-        # Wait until we clear the container (cutting the corner slightly)
-        while self.drivetrain_sensor_input.get().get("x_pos") < 1:
+        # Wait until we clear the container
+        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
         # Set y_pos a little ahead of the container
         self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
 
-        # Wait for x to be in-place
-        yield from call_public_coroutine("drivetrain.wait_for_x")
-
         # Wait for y to be close enough
-        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos - 1:
+        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos:
             yield from asyncio.sleep(.1)
             self.check_mode()
 
-        # Abort and let the next procedure take over
-        return
+
+
+
+    ##################################
+    # Finalizing procedures
 
     @asyncio.coroutine
-    def score_stack(self, stack_x_pos):
+    def platform_align(self):
+        """
+        Spin 90 degrees and approach the scoring platform. This is so that we don't drive sideways over the scoring platforms.
+        """
+
+        self.report("Aligning to scoring platform")
+
+        # Drive to x=4, spinning 90 degrees clockwise
+        self.drivetrain_setpoint_datastream.push({"x_pos": 4, "r_pos": -90})
+        yield from call_public_coroutine("drivetrain.wait_for_r")
+        self.check_mode()
+
+    @asyncio.coroutine
+    def score_stack(self):
         """
         Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
         """
-
-        self.report("Scoring stack at x={}".format(stack_x_pos))
+        self.report("Scoring stack")
 
         # Start lowering the forks
         call_public_method("elevator.set_setpoint", .5)
 
         # Strafe to stack x pos
-        self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 10.5})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
         # Drop stack
@@ -201,6 +226,15 @@ class UniversalAuto(yeti.Module):
         stack_y = self.drivetrain_sensor_input.get()["y_pos"]
         self.drivetrain_setpoint_datastream.push({"y_pos": stack_y - 2})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
+    @asyncio.coroutine
+    def score_bot(self):
+        """ Scores the robot, moving to the auto zone at x=10.5 """
+        self.report("Scoring robot")
+
+        self.drivetrain_setpoint_datastream.push({"x_pos": 10.5})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        self.check_mode()
 
 
 

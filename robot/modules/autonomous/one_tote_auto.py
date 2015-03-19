@@ -9,9 +9,9 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class OnePieceAuto(yeti.Module):
+class OneToteAuto(yeti.Module):
     """
-    This is a one-piece autonomous mode. It lifts a game piece and moves into the auto zone, rotating on the way.
+    This is a one-tote autonomous mode. It lifts a tote and moves into the auto zone, rotating on the way.
     """
 
     DO_PAUSES = False
@@ -47,10 +47,10 @@ class OnePieceAuto(yeti.Module):
             call_public_method("drivetrain.reset_auto_config")
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
 
-            # Grab item
+            # Grab tote
             yield from call_public_coroutine("elevator.goto_bottom")
             self.check_mode()
-            yield from call_public_coroutine("elevator.goto_pos", 5)
+            yield from call_public_coroutine("elevator.goto_pos", 2)
             self.check_mode()
             yield from self.do_pause()
 

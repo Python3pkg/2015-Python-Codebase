@@ -49,11 +49,10 @@ class TwoPieceAuto(yeti.Module):
             call_public_method("drivetrain.reset_auto_config")
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
 
-
             # Grab tote
             yield from call_public_coroutine("elevator.goto_bottom")
             self.check_mode()
-            yield from call_public_coroutine("elevator.goto_pos", 5)
+            yield from call_public_coroutine("elevator.goto_pos", 6)
             self.check_mode()
             yield from self.do_pause()
 

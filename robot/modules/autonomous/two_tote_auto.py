@@ -9,7 +9,7 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
-class ThreeToteAuto(yeti.Module):
+class TwoToteAuto(yeti.Module):
 
     PAUSE = 0
     auto_start_timestamp = 0
@@ -70,43 +70,65 @@ class ThreeToteAuto(yeti.Module):
         yield from call_public_coroutine("elevator.goto_pos", .3)
 
         # Lift tote slightly
-        yield from call_public_coroutine("elevator.goto_pos", .8)
+        yield from call_public_coroutine("elevator.goto_pos", 2)
 
         # Decrease translation tolerance back to normal.
         call_public_method("drivetrain.reset_auto_config")
 
-        # Set elevator to lift before exiting
-        call_public_method("elevator.set_setpoint", 2.5)
 
     @asyncio.coroutine
-    def score_stack(self, stack_x_pos):
+    def move_container(self, y_pos):
         """
-        Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
+        Drive to clear the container in the x direction and just before the container in the y direction.
+        Once we clear on the x axis, drive to the y coordinate of the container. Then drive back to x=0
+        and return.
+        """
+        self.report("Moving container at y={}".format(y_pos))
+
+        # Set the x and y setpoint to off the corner of the container (If it had a corner!)
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
+        self.check_mode()
+
+        # Wait until we clear the container
+        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
+            yield from asyncio.sleep(.1)
+            self.check_mode()
+
+        # Set y_pos a little ahead of the container
+        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
+
+        # Wait for y to be close enough
+        while self.drivetrain_sensor_input.get().get("y_pos") < y_pos:
+            yield from asyncio.sleep(.1)
+            self.check_mode()
+
+
+    @asyncio.coroutine
+    def platform_align(self):
+        """
+        Spin 90 degrees and approach the scoring platform. This is so that we don't drive sideways over the scoring platforms.
         """
 
-        self.report("Scoring stack at x={}".format(stack_x_pos))
+        self.report("Aligning to scoring platform")
 
-        # Start lowering the forks
-        call_public_method("elevator.set_setpoint", 1)
+        # Drive to x=4, spinning 90 degrees clockwise
+        self.drivetrain_setpoint_datastream.push({"x_pos": 4, "r_pos": -90})
+        yield from call_public_coroutine("drivetrain.wait_for_r")
+        self.check_mode()
 
-        # Strafe to stack x pos
-        self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})
+    @asyncio.coroutine
+    def score_bot(self):
+        """ Scores the robot, moving to the auto zone at x=10.5 """
+        self.report("Scoring robot")
+
+        self.drivetrain_setpoint_datastream.push({"x_pos": 10.5})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
-
-        # Drop stack
-        yield from call_public_coroutine("elevator.goto_pos", .4)
-
-        # Get stack y and back off
-        stack_y = self.drivetrain_sensor_input.get()["y_pos"]
-        self.drivetrain_setpoint_datastream.push({"y_pos": stack_y - 2})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-
+        self.check_mode()
 
     @asyncio.coroutine
     @gamemode.autonomous_task
     def run_auto(self):
         try:
-            self.PAUSE = wpilib.SmartDashboard.getNumber("pause_duration")
             call_public_method("drivetrain.auto_drive_enable")
             call_public_method("drivetrain.reset_sensor_input")
             call_public_method("drivetrain.reset_auto_config")
@@ -114,11 +136,13 @@ class ThreeToteAuto(yeti.Module):
 
             yield from self.get_tote(0)
             yield from self.do_pause()
+            yield from self.move_container(2.7)
+            yield from self.do_pause()
             yield from self.get_tote(6.5)
             yield from self.do_pause()
-            yield from self.get_tote(13)
+            yield from self.platform_align()
             yield from self.do_pause()
-            yield from self.score_stack(10)
+            yield from self.score_bot()
 
             self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
 

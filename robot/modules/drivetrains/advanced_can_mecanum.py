@@ -111,6 +111,11 @@ def polar_to_cartesian(angle, magnitude):
     x = math.cos(angle) * magnitude
     return x, y
 
+
+def rotate_vector(x, y, angle):
+    vector_angle, vector_magnitude = cartesian_to_polar(x, y)
+    return polar_to_cartesian(angle + vector_angle, vector_magnitude)
+
 # This code is directly ported from team 254's 2011 ContinuousAccelFilter
 
 
@@ -221,7 +226,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -269,7 +274,7 @@ class AdvancedCANMecanum(yeti.Module):
     # DEBUG OPTIONS
 
     # Enables submitting debug metrics to NetworkTables
-    DEBUG_NT_OUT = False
+    DEBUG_NT_OUT = True
 
     ########################
     # PRE-CALCULATED VALUES
@@ -361,22 +366,30 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 7, "y_tolerance": .2,
-                                               "max_x_speed": 14, "max_x_acceleration": 5, "x_tolerance": .2,
+        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 7, "y_tolerance": .2,
+                                               "max_x_speed": 5, "max_x_acceleration": 5, "x_tolerance": .2,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
-        x_pos = self.sensor_input_datastream.get().get("x_pos", 0)
+        input_data = self.sensor_input_datastream.get()
+        x_pos = input_data.get("x_pos", 0)
+        r_pos = input_data.get("r_pos", 0)
         x_setpoint = self.autodrive_setpoint_datastream.get().get("x_pos", 0)
-        x_tolerance = self.autodrive_config_datastream.get()["x_tolerance"]
+        config = self.autodrive_config_datastream.get()
+        x_tolerance, _ = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
+        x_tolerance = abs(x_tolerance)
         return abs(x_pos - x_setpoint) < x_tolerance
 
     @public_object(prefix="drivetrain")
     def y_at_setpoint(self):
-        y_pos = self.sensor_input_datastream.get().get("y_pos", 0)
+        input_data = self.sensor_input_datastream.get()
+        y_pos = input_data.get("y_pos", 0)
+        r_pos = input_data.get("r_pos", 0)
         y_setpoint = self.autodrive_setpoint_datastream.get().get("y_pos", 0)
-        y_tolerance = self.autodrive_config_datastream.get()["y_tolerance"]
+        config = self.autodrive_config_datastream.get()
+        _, y_tolerance = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
+        y_tolerance = abs(y_tolerance)
         return abs(y_pos - y_setpoint) < y_tolerance
 
     @public_object(prefix="drivetrain")
@@ -490,17 +503,13 @@ class AdvancedCANMecanum(yeti.Module):
             # Get total global rotation from rotation speed
             r_pos = (robot_r_speed * delta_time) + last_r_pos
 
-
             # Convert robot-centric speeds to world-centric speeds
-            trans_angle, trans_speed = cartesian_to_polar(robot_x_speed, robot_y_speed)
-            world_trans_angle = trans_angle + r_pos
-            x_speed, y_speed = polar_to_cartesian(world_trans_angle, trans_speed)
+            x_speed, y_speed = rotate_vector(robot_x_speed, robot_y_speed, r_pos)
             r_speed = robot_r_speed
 
             # Calculate current xy position
             x_pos = (x_speed * delta_time) + last_x_pos
             y_pos = (y_speed * delta_time) + last_y_pos
-
 
             # If external inputs are configured, override values
             external_input_data = self.external_sensor_input_datastream.get()
@@ -544,14 +553,18 @@ class AdvancedCANMecanum(yeti.Module):
                 setpoint_data = self.autodrive_setpoint_datastream.get()
                 config = self.autodrive_config_datastream.get()
 
-                max_y_speed = config["max_y_speed"]
-                max_y_accel = config["max_y_acceleration"]
-                max_x_speed = config["max_x_speed"]
-                max_x_accel = config["max_x_acceleration"]
+                max_x_speed, max_y_speed = rotate_vector(config["max_x_speed"], config["max_y_speed"], r_pos)
+                max_x_speed = abs(max_x_speed)
+                max_y_speed = abs(max_y_speed)
+                max_x_accel, max_y_accel = rotate_vector(config["max_x_acceleration"], config["max_y_acceleration"], r_pos)
+                max_x_accel = abs(max_x_accel)
+                max_y_accel = abs(max_y_accel)
+                x_tolerance, y_tolerance = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
+                x_tolerance = abs(x_tolerance)
+                y_tolerance = abs(y_tolerance)
+
                 max_rot_speed = config["max_rot_speed"]
                 max_rot_accel = config["max_rot_acceleration"]
-                y_tolerance = config["y_tolerance"]
-                x_tolerance = config["x_tolerance"]
                 rot_tolerance = config["rot_tolerance"]
 
                 setpoint_x_pos = setpoint_data.get("x_pos", 0)
@@ -583,9 +596,7 @@ class AdvancedCANMecanum(yeti.Module):
                     r_speed_out = 0
 
                 # Convert from world-centric to robot-centric
-                angle, magnitude = cartesian_to_polar(x_speed_out, y_speed_out)
-                angle -= r_pos + (r_speed * delta_time)
-                robot_x_out, robot_y_out = polar_to_cartesian(angle, magnitude)
+                robot_x_out, robot_y_out = rotate_vector(x_speed_out, y_speed_out, -(r_pos + r_speed*delta_time))
 
                 # Send values to drive loop
                 self.control_datastream.push({"forward_fps": robot_y_out, "right_fps": robot_x_out, "ctrclockwise_dps": r_speed_out, "enable_esp": True})
