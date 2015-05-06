@@ -112,7 +112,7 @@ class TwoToteAuto(yeti.Module):
         self.report("Aligning to scoring platform")
 
         # Drive to x=4, spinning 90 degrees clockwise
-        self.drivetrain_setpoint_datastream.push({"x_pos": 4, "r_pos": -90})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 3, "r_pos": -90})
         yield from call_public_coroutine("drivetrain.wait_for_r")
         self.check_mode()
 

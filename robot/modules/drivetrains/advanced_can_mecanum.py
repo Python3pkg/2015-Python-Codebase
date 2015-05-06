@@ -94,9 +94,9 @@ def threshold_value(value, threshold):
 
 def signing_square(value):
     if value < 0:
-        return value ** 2
-    else:
         return -(value ** 2)
+    else:
+        return value ** 2
 
 
 def cartesian_to_polar(x, y):
@@ -226,7 +226,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -366,9 +366,9 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 7, "y_tolerance": .2,
-                                               "max_x_speed": 5, "max_x_acceleration": 5, "x_tolerance": .2,
-                                               "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 2.5})
+        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": .3,
+                                               "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": .3,
+                                               "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
@@ -682,7 +682,10 @@ class AdvancedCANMecanum(yeti.Module):
                     for controller in self.motor_controllers:
                         controller.set(0)
 
-
+    # This is the constant, when multiplied by counterclockwise dps, results in the appropriate
+    # right fps in order to rotate around a point 3ft in front of the robot.
+    # It is essentially 3*pi/180
+    STRAFE_TURN_CONST = 3 * math.pi / 180
 
     @gamemode.teleop_task
     @asyncio.coroutine
@@ -700,9 +703,9 @@ class AdvancedCANMecanum(yeti.Module):
                 self.reset_sensor_input()
             last_reset_button = reset_button_val
 
-            forward_percentage = self.joystick.getY()
-            right_percentage = -self.joystick.getX()
-            ctrclockwise_percentage = self.joystick.getZ()
+            forward_percentage = -self.joystick.getY()
+            right_percentage = self.joystick.getX()
+            ctrclockwise_percentage = -self.joystick.getZ()
 
             #Threshold values
             forward_percentage = threshold_value(forward_percentage, .10)
@@ -729,6 +732,10 @@ class AdvancedCANMecanum(yeti.Module):
                 forward_fps = forward_percentage * self.SLOW_JOYSTICK_Y_FPS
                 right_fps = right_percentage * self.SLOW_JOYSTICK_X_FPS
                 ctrclockwise_dps = ctrclockwise_percentage * self.SLOW_JOYSTICK_R_DPS
+
+            # If button 9 is pressed, rotate around point 3ft in front of bot
+            if self.joystick.getRawButton(9):
+                right_fps = self.STRAFE_TURN_CONST * ctrclockwise_dps
 
             # If button 2 is pressed, disable ESP
             enable_esp = not self.joystick.getRawButton(2)

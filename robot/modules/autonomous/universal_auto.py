@@ -10,6 +10,7 @@ from yeti.interfaces.object_proxy import call_public_method, call_public_corouti
 class EndOfAutoException(Exception):
     pass
 
+
 class UniversalAuto(yeti.Module):
 
     PAUSE = 0
@@ -22,10 +23,10 @@ class UniversalAuto(yeti.Module):
         self.elevator_setpoint_datastream = datastreams.get_datastream("elevator_setpoint")
         self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
         config_options = [("start_delay", 0),
-                          ("tote_one", 0), ("container_one", 0),
+                          ("tote_one", 1), ("container_one", 0),
                           ("tote_two", 0), ("container_two", 0),
                           ("tote_three", 0), ("container_three", 0),
-                          ("platform_align", 0), ("end_routine", 0)]
+                          ("platform_align", 1), ("end_routine", 1)]
         for key, value in config_options:
             if wpilib.SmartDashboard.getNumber("autonomous/" + key, value) == value:
                 wpilib.SmartDashboard.putNumber("autonomous/" + key, value)
@@ -50,12 +51,13 @@ class UniversalAuto(yeti.Module):
                 wpilib.SmartDashboard.getNumber("autonomous/container_three")]
 
             start_delay = wpilib.SmartDashboard.getNumber("autonomous/start_delay")
-            platform_align = wpilib.SmartDashboard.getNumber("autonomous/end_routine")
+            platform_align = wpilib.SmartDashboard.getNumber("autonomous/platform_align")
             end_routine = wpilib.SmartDashboard.getNumber("autonomous/end_routine")
 
             # Reset and enable autonomous drivetrain
             call_public_method("drivetrain.reset_sensor_input")
             call_public_method("drivetrain.reset_auto_config")
+            self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": 0, "r_pos": 0})
             call_public_method("drivetrain.auto_drive_enable")
             self.reset_auto_time()
 
@@ -79,7 +81,11 @@ class UniversalAuto(yeti.Module):
                 if container_command == 0:
                     pass
                 elif container_command == 1:
-                    yield from self.move_container(container_y)
+                    yield from self.avoid_container(container_y)
+                elif container_command == 2:
+                    yield from self.save_container(container_y)
+                elif container_command == 3:
+                    yield from self.score_container(container_y)
 
             # Align to platform if instructed
             if platform_align == 0:
@@ -107,14 +113,6 @@ class UniversalAuto(yeti.Module):
         if not gamemode.is_autonomous():
             raise EndOfAutoException
 
-    @asyncio.coroutine
-    def do_pause(self):
-        self.check_mode()
-        if self.PAUSE > 0:
-            drivetrain_input_data = self.drivetrain_sensor_input.get()
-            print("Position Update: ({},{},{})".format(drivetrain_input_data.get("x_pos", 0), drivetrain_input_data.get("y_pos", 0), drivetrain_input_data.get("r_pos", 0)))
-            yield from asyncio.sleep(self.PAUSE)
-
     def reset_auto_time(self):
         self.auto_start_timestamp = wpilib.Timer.getFPGATimestamp()
 
@@ -140,6 +138,7 @@ class UniversalAuto(yeti.Module):
             self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos - 1.7, "r_pos": 0})
             yield from call_public_coroutine("elevator.goto_pos", 2.5)
             yield from call_public_coroutine("drivetrain.wait_for_x")
+            yield from call_public_coroutine("drivetrain.wait_for_r")
 
         # Drive to tote.
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
@@ -154,14 +153,14 @@ class UniversalAuto(yeti.Module):
         # Lift tote slightly
         yield from call_public_coroutine("elevator.goto_pos", .8)
 
-        # Decrease translation tolerance back to normal.
+        # Reset auto config back to normal.
         call_public_method("drivetrain.reset_auto_config")
 
         # Set elevator to lift before exiting
         call_public_method("elevator.set_setpoint", 2.5)
 
     @asyncio.coroutine
-    def move_container(self, y_pos):
+    def avoid_container(self, y_pos):
         """
         Drive to clear the container in the x direction and just before the container in the y direction.
         Once we clear on the x axis, drive to the y coordinate of the container. Then drive back to x=0
@@ -186,7 +185,31 @@ class UniversalAuto(yeti.Module):
             yield from asyncio.sleep(.1)
             self.check_mode()
 
+    @asyncio.coroutine
+    def save_container(self, y_pos):
+        self.report("Saving container at y={}".format(y_pos))
+        yield from self.avoid_container(y_pos)
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0})
+        yield from call_public_coroutine("drivetrain.wait_for_x")
 
+    @asyncio.coroutine
+    def score_container(self, y_pos):
+        self.report("Scoring container at y={}".format(y_pos))
+
+        # Lift tote above container
+        yield from call_public_coroutine("elevator.goto_pos", 6)
+        self.check_mode()
+
+        # Strafe-turn to capture container
+        self.drivetrain_setpoint_datastream.push({"x_pos": -1.5, "y_pos": y_pos, "r_pos": -45})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        self.check_mode()
+
+        # Drive to auto zone at x=8.5
+        self.logger.info("Drive phase 2")
+        self.drivetrain_setpoint_datastream.push({"x_pos": 10.5, "r_pos": -90})
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+        self.check_mode()
 
 
     ##################################
