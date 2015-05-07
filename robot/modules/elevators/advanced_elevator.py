@@ -97,7 +97,7 @@ class AdvancedElevator(yeti.Module):
     # The CAN id for the CAN Jaguar
     MASTER_CAN_ID = 10
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
     NT_DEBUG_OUT = True
 
     # Encoder Config
@@ -121,6 +121,8 @@ class AdvancedElevator(yeti.Module):
 
         # Setup CAN Jaguars
 
+        self.elevator_input = datastreams.get_datastream("elevator_input")
+
         # Setup Master
         if self.USE_SIMULATED_JAGUAR:
             self.master_jaguar = SimulatedCANJaguar(self.MASTER_CAN_ID)
@@ -136,6 +138,8 @@ class AdvancedElevator(yeti.Module):
         self.setpoint = self.get_position()
         self.master_jaguar.enableControl()
         while True:
+
+            self.elevator_input.push({"pos": self.get_position()})
 
             if self.NT_DEBUG_OUT:
                 wpilib.SmartDashboard.putNumber("elvevator_pos", self.get_position())
