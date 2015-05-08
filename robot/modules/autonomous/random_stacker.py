@@ -17,16 +17,17 @@ class RandomStacker(yeti.Module):
     PAUSE = 0
     auto_start_timestamp = 0
     stack_heights = None
-    TOTE_HEIGHT = 2
+    TOTE_HEIGHT = 1
     stack_spacing = 3
+    held_totes = 0
 
     def module_init(self):
         self.drivetrain_setpoint_datastream = datastreams.get_datastream("drivetrain_auto_setpoint")
         self.drivetrain_sensor_input = datastreams.get_datastream("drivetrain_sensor_input")
         self.drivetrain_config_datastream = datastreams.get_datastream("drivetrain_auto_config")
         self.elevator_input_datastream = datastreams.get_datastream("elevator_input")
-        config_options = [("stack_spacing", 3), ("stack_count", 3),
-                          ("starting_totes", 4), ("iterations", 1)]
+        config_options = [("stack_spacing", 4), ("stack_count", 3),
+                          ("starting_totes", 5), ("iterations", 10)]
         for key, value in config_options:
             if wpilib.SmartDashboard.getNumber("autonomous/" + key, value) == value:
                 wpilib.SmartDashboard.putNumber("autonomous/" + key, value)
@@ -54,15 +55,20 @@ class RandomStacker(yeti.Module):
             call_public_method("drivetrain.auto_drive_enable")
             self.reset_auto_time()
 
+            # Drop forks and back away to start
+            yield from call_public_coroutine("elevator.goto_pos", 0)
+            self.drivetrain_setpoint_datastream.push({"y_pos": -3})
+            yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
             for n in range(int(iterations)):
                 possible_totes = []
                 for stack in range(len(self.stack_heights)):
-                    possible_totes = [(stack, tote) for tote in range(int(self.stack_heights[stack]))]
-                possible_stacks = range(stack_count)
+                    possible_totes.extend([(stack, tote) for tote in range(int(self.stack_heights[stack]))])
                 stack, tote = random.choice(possible_totes)
+                possible_stacks = [s for s in range(stack_count) if s != stack]
                 end_stack = random.choice(possible_stacks)
                 yield from self.pick_tote(stack, tote)
-                yield from self.goto_stack(end_stack)
+                yield from self.drop_stack(end_stack)
 
             self.logger.info("Autonomous routine took {} seconds total".format(self.get_auto_time()))
 
@@ -91,22 +97,31 @@ class RandomStacker(yeti.Module):
         """
         Grab the tote from the indicated stack at the indicated level, (eg, stack 1 (second from left) level 1 (second from bottom))
         """
-        self.report("Getting tote at stack={}, level={}".format(stack, level))
+        self.report("Getting tote from stack={}, level={}".format(stack, level))
 
         # Drive to the target stack
         yield from self.goto_stack(stack)
+
+        # Ensure forks clear stack
+        min_fork_height = (self.stack_heights[stack] + 1) * self.TOTE_HEIGHT
+        if self.elevator_input_datastream.get()["pos"] < min_fork_height:
+            yield from call_public_coroutine("elevator.goto_pos", min_fork_height)
 
         # Drive in close to stack.
         self.drivetrain_setpoint_datastream.push({"y_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
-        tote_height = stack * self.TOTE_HEIGHT
+        tote_height = level * self.TOTE_HEIGHT
 
         # Lower forks to below target tote.
         yield from call_public_coroutine("elevator.goto_pos", tote_height)
 
         # Lift tote slightly
         yield from call_public_coroutine("elevator.goto_pos", tote_height + 1)
+
+        # Set stack to be shortened
+        self.held_totes = self.stack_heights[stack] - level
+        self.stack_heights[stack] = level
 
 
     @asyncio.coroutine
@@ -118,22 +133,14 @@ class RandomStacker(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"y_pos": -3})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
-        # Figure out what stack we are currently on
-        x_pos = self.drivetrain_sensor_input.get()["x_pos"]
-        current_stack = int(x_pos/self.stack_spacing)
-        target_stack = current_stack
+        # Set drivetrain setpoint
+        self.drivetrain_setpoint_datastream.push({"x_pos": stack_num * self.stack_spacing})
 
-        while target_stack != stack_num:
-            if target_stack < stack_num:
-                target_stack += 1
-            else:
-                target_stack -= 1
-            next_stack_tote_count = self.stack_heights[target_stack]
-            min_fork_height = (next_stack_tote_count + 1) * self.TOTE_HEIGHT
-            if self.elevator_input_datastream.get()["pos"] < min_fork_height:
-                yield from call_public_coroutine("elevator.goto_pos", min_fork_height)
-            self.drivetrain_setpoint_datastream.push({"x_pos": target_stack * self.stack_spacing})
-        yield from call_public_coroutine("drivetrain.wait_for_x")
+        # Move forks
+        yield from call_public_coroutine("elevator.goto_pos", (self.stack_heights[stack_num] + 1) * self.TOTE_HEIGHT)
+
+        # Wait for drivetrain setpoint
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
     @asyncio.coroutine
     def drop_stack(self, stack):
@@ -151,6 +158,10 @@ class RandomStacker(yeti.Module):
 
         # Drop stack.
         yield from call_public_coroutine("elevator.goto_pos", self.stack_heights[stack] * self.TOTE_HEIGHT)
+
+        # Set stack to be extended
+        self.stack_heights[stack] += self.held_totes
+        self.held_totes = 0
 
         # Back away from stack.
         self.drivetrain_setpoint_datastream.push({"y_pos": -3})
