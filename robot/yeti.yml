@@ -1,0 +1,32 @@
+enabled:
+  - elevator
+  - drivetrain
+  #- autonomous
+  #- ultrasonic_test
+  #- debug
+  #- can_jaguar_test
+  #- drivetrain_debugger
+
+module_dirs:
+  - modules
+
+module_sets:
+  drivetrain:
+    - drivetrains.advanced_can_mecanum
+    - drivetrains.basic_can_mecanum
+    - drivetrains.arcade_drive
+
+  elevator:
+    - elevators.advanced_elevator
+    - elevators.basic_elevator
+
+  autonomous:
+    #- autonomous.random_stacker
+    - autonomous.auto_switcher
+    - autonomous.universal_auto
+    - autonomous.three_tote_auto
+    - autonomous.two_tote_auto
+    - autonomous.two_piece_auto
+    - autonomous.one_tote_auto
+    - autonomous.advanced_drive_auto
+    - autonomous.basic_drive_auto

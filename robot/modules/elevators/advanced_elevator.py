@@ -2,91 +2,6 @@ import asyncio
 import yeti
 import wpilib
 import math
-from yeti.wpilib_extensions import Referee
-from yeti.interfaces import gamemode, datastreams
-from yeti.interfaces.object_proxy import public_object
-
-class SimulatedCANJaguar():
-
-    MAX_RPM_OUTPUT = 120
-    FORWARD_LIMIT = 8
-    REVERSE_LIMIT = 0
-    STARTING_POS = 2
-
-    def __init__(self, CAN_ID):
-        self.talon = wpilib.Talon(CAN_ID - 10)
-        self.position = self.STARTING_POS
-        self.last_update = wpilib.Timer.getFPGATimestamp()
-        self.speed = 0
-        self.mode = wpilib.CANJaguar.ControlMode.PercentVbus
-
-    def _reset_physics(self):
-        self.position = self.STARTING_POS
-        self.speed = 0
-
-    def setSpeedModeQuadEncoder(self, codesPerRev, p, i, d):
-        self.mode = wpilib.CANJaguar.ControlMode.Speed
-        self._reset_physics()
-
-    def setPercentModeQuadEncoder(self, codesPerRev):
-        self.mode = wpilib.CANJaguar.ControlMode.PercentVbus
-        self._reset_physics()
-
-    def getReverseLimitOK(self):
-        return self.REVERSE_LIMIT is None or self.position > self.REVERSE_LIMIT
-
-    def getForwardLimitOK(self):
-        return self.FORWARD_LIMIT is None or self.position < self.FORWARD_LIMIT
-
-    def _update_physics(self):
-        current_time = wpilib.Timer.getFPGATimestamp()
-        delta_time = current_time - self.last_update
-        self.position += self.speed * (delta_time/60)
-        if self.position <= 0:
-            self.position = 0
-            self.speed = 0
-        self.last_update = current_time
-
-    def set(self, value):
-        self._update_physics()
-        if self.mode == wpilib.CANJaguar.ControlMode.Speed:
-            self.setSpeed(value)
-        elif self.mode == wpilib.CANJaguar.ControlMode.PercentVbus:
-            self.setSpeed(value * self.MAX_RPM_OUTPUT)
-
-    def setSpeed(self, speed):
-        if (speed < 0 and not self.getReverseLimitOK()) or (speed > 0 and not self.getForwardLimitOK()):
-            speed = 0
-        self.speed = speed
-        self.talon.set(speed / self.MAX_RPM_OUTPUT)
-
-    def get(self):
-        return self.speed
-
-    def getControlMode(self):
-        return self.mode
-
-    def getSpeed(self):
-        return self.speed
-
-    def getPosition(self):
-        self._update_physics()
-        return self.position
-
-    def enableControl(self):
-        pass
-
-    def disableControl(self):
-        pass
-
-    def getOutputCurrent(self):
-        return 0
-
-    def getOutputVoltage(self):
-        return 0
-
-    def free(self):
-        self.talon.free()
 
 class AdvancedElevator(yeti.Module):
     """An advanced CAN controller for an elevator"""
@@ -95,7 +10,7 @@ class AdvancedElevator(yeti.Module):
     # CONFIGURATION
 
     # The CAN id for the CAN Jaguar
-    MASTER_CAN_ID = 10
+    JAG_CAN_ID = 10
 
     USE_SIMULATED_JAGUAR = True
     NT_DEBUG_OUT = True
@@ -114,51 +29,74 @@ class AdvancedElevator(yeti.Module):
     calibrated = False
 
     def module_init(self):
-        self.referee = Referee(self)
+        self.gameclock = self.engine.get_module("gameclock")
+        self.pipeline = self.engine.get_module("pipeline")
 
         # Setup joystick
         self.joystick = wpilib.Joystick(1)
 
-        # Setup CAN Jaguars
+        # Setup CAN jaguar
+        self.lift_jaguar = wpilib.CANJaguar(self.JAG_CAN_ID)
+        self.lift_jaguar.setPercentModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION)
+        self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_encoder", deriv_order=1)
+        self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_limit_upper")
+        self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_limit_lower")
+        self.pipeline.add_output_poll(self.lift_jaguar.set, "lift_motor")
 
-        self.elevator_input = datastreams.get_datastream("elevator_input")
-
-        # Setup Master
-        if self.USE_SIMULATED_JAGUAR:
-            self.master_jaguar = SimulatedCANJaguar(self.MASTER_CAN_ID)
+    def pipeline_sensor_prediction(self, dt, output, last_sensor):
+        sensor = {}
+        if last_sensor["lift_encoder"] >= 8*self.ROT_PER_FOOT*self.ENCODER_TICS_PER_ROTATION:
+            sensor["lift_limit_upper"] = True
+            sensor["lift_limit_lower"] = False
+            sensor["lift_encoder"] = last_sensor["lift_encoder"] + min(output["lift_motor"], 0)*8*dt
+        elif last_sensor["lift_encoder"] <= 0:
+            sensor["lift_limit_upper"] = True
+            sensor["lift_limit_lower"] = False
+            sensor["lift_encoder"] = last_sensor["lift_encoder"] + max(output["lift_encoder"], 0)*8*dt
         else:
-            self.master_jaguar = wpilib.CANJaguar(self.MASTER_CAN_ID)
-        self.master_jaguar.setPercentModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION)
-        self.referee.watch(self.master_jaguar)
+            sensor["lift_limit_upper"] = False
+            sensor["lift_limit_lower"] = False
+            sensor["lift_encoder"] = last_sensor["lift_encoder"] + output["lift_encoder"]*8*dt
+        return sensor
 
+    def pipeline_state_update(self, dt, sensors, last_state):
+        state = {}
+        if sensors["lift_limit_lower"]:
+            state["lift_pos"] = 0
+        else:
+            state["lift_pos"] = last_state["lift_pos"] + sensors["lift_encoder"][1]*dt
+        return state
 
-    @yeti.autorun_coroutine
+    def pipeline_control_update(self, dt, state, control):
+        return {"lift_motor": control["lift_pwr"]}
+
+    def teleop_periodic(self):
+        self.pipeline.control["lift_pwr"] = self.joystick.getY()
+
     @asyncio.coroutine
     def run_loop(self):
         self.setpoint = self.get_position()
-        self.master_jaguar.enableControl()
+        self.lift_jaguar.enableControl()
         while True:
-
-            self.elevator_input.push({"pos": self.get_position()})
 
             if self.NT_DEBUG_OUT:
                 wpilib.SmartDashboard.putNumber("elvevator_pos", self.get_position())
                 wpilib.SmartDashboard.putNumber("elvevator_setpoint", self.setpoint)
                 wpilib.SmartDashboard.putBoolean("elvevator_calibrated", self.calibrated)
 
-            if not self.master_jaguar.getForwardLimitOK():
-                self.calibration_ref = -self.master_jaguar.getPosition()
+            if not self.lift_jaguar.getForwardLimitOK():
+                self.calibration_ref = -self.lift_jaguar.getPosition()
                 self.calibrated = True
 
             output = 0
-            if gamemode.is_teleop():
+            if self.gameclock.is_teleop():
                 output = self.joystick.getY()
                 self.setpoint = self.get_position()
-            elif gamemode.is_autonomous():
+            elif self.gameclock.is_autonomous():
 
                 # If setpoint is zero, always go down.
                 if self.setpoint <= 0 or not self.calibrated:
-                    if self.master_jaguar.getForwardLimitOK():
+                    if self.lift_jaguar.getForwardLimitOK():
                         output = -1
                     else:
                         output = 0
@@ -170,20 +108,19 @@ class AdvancedElevator(yeti.Module):
                         if pos_delta < 0:
                             output = -output
 
-            self.master_jaguar.set(-output)
+            self.lift_jaguar.set(-output)
             wpilib.SmartDashboard.putNumber("elevator output", output)
 
             yield from asyncio.sleep(.05)
-        self.master_jaguar.disableControl()
+        self.lift_jaguar.disableControl()
 
     def get_position(self):
-        return (-self.master_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
+        return (-self.lift_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
 
-    @public_object(prefix="elevator")
+
     def set_setpoint(self, value):
         self.setpoint = value
 
-    @public_object(prefix="elevator")
     @asyncio.coroutine
     def goto_pos(self, value):
         self.logger.info("Goto {}".format(value))
@@ -192,18 +129,19 @@ class AdvancedElevator(yeti.Module):
             pos = self.get_position()
             if abs(value - pos) <= self.POSITION_TOLERANCE and self.calibrated:
                 break
-            if not gamemode.is_autonomous():
+            if not self.gameclock.is_autonomous():
                 break
             self.set_setpoint(value)
             yield from asyncio.sleep(.1)
         self.logger.info("End goto {}".format(value))
 
-    @public_object(prefix="elevator")
     @asyncio.coroutine
     def goto_home(self):
         yield from self.goto_pos(self.HOME_POSITION)
 
-    @public_object(prefix="elevator")
     @asyncio.coroutine
     def goto_bottom(self):
         yield from self.goto_pos(0)
+
+    def module_deinit(self):
+        self.lift_jaguar.free()

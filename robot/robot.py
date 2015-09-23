@@ -2,7 +2,7 @@
 
 import wpilib
 from os.path import dirname, abspath
-from yeti.robots import YetiRobot
+from yeti import YetiRobot
 
 
 class FlatMountainBot(YetiRobot):

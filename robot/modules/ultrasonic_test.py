@@ -8,15 +8,15 @@ from yeti.wpilib_extensions import Referee
 class UltrasonicTest(yeti.Module):
 
     def module_init(self):
-        self.referee = Referee(self)
-
         self.ultrasonic = MaxSonarEZPulseWidth(0)
-        self.referee.watch(self.ultrasonic)
 
     @asyncio.coroutine
-    @yeti.autorun_coroutine
-    def run_loop(self):
+    @yeti.autorun
+    def enabled(self):
         while True:
             wpilib.SmartDashboard.putNumber("range", self.ultrasonic.get())
             yield from asyncio.sleep(1)
+
+    def module_deinit(self):
+        self.ultrasonic.free()
 

@@ -1,8 +1,6 @@
 import asyncio
 import yeti
 import wpilib
-from yeti.interfaces import datastreams, gamemode
-from yeti.interfaces.object_proxy import call_public_method
 import pickle
 
 
@@ -15,8 +13,8 @@ class DrivetrainDebugger(yeti.Module):
     data = b""
 
     def module_init(self):
-        self.control_datastream = datastreams.get_datastream("drivetrain_control")
-        self.sensor_input_datastream = datastreams.get_datastream("drivetrain_sensor_input")
+        self.drivetrain_mod = self.engine.get_module("drivetrain.advanced_can_mecanum")
+        self.gameclock = self.engine.get_module("gameclock")
 
         self.start_coroutine(self.start_server())
         wpilib.SmartDashboard.putNumber("drive_jag_p", 1.000)
@@ -35,7 +33,7 @@ class DrivetrainDebugger(yeti.Module):
                 transport.close()
         self.server = yield from self.event_loop.create_server(DataServer, port=2222)
 
-    @yeti.autorun_coroutine
+    @yeti.autorun
     @asyncio.coroutine
     def pid_updater(self):
         last_p = 0
@@ -50,15 +48,13 @@ class DrivetrainDebugger(yeti.Module):
                 last_p = p
                 last_i = i
                 last_d = d
-                call_public_method("drivetrain.set_pid", p, i, d)
-
-
+                self.drivetrain_mod.set_pid(p, i, d)
 
     @gamemode.enabled_task
     @asyncio.coroutine
     def monitor_drivetrain(self):
         current_run_data = list()
-        while gamemode.is_enabled():
+        while self.gameclock.is_enabled():
             sensor_data = self.sensor_input_datastream.get()
             control_data = self.control_datastream.get()
 

@@ -1,7 +1,6 @@
 import yeti
 import asyncio
 import wpilib
-from yeti.interfaces import gamemode
 
 class VacuumCup(yeti.Module):
 
@@ -9,12 +8,11 @@ class VacuumCup(yeti.Module):
         self.joystick = wpilib.Joystick(0)
         self.pump_relay = wpilib.Relay(0)
         self.vent_solenoid = wpilib.Solenoid(0)
+        self.gameclock = self.engine.get_module("gameclock")
 
     @asyncio.coroutine
-    @gamemode.enabled_task
-    def run_pump(self):
-        print("Entering")
-        while gamemode.is_enabled():
+    def enabled(self):
+        while self.gameclock.is_enabled():
             pump_button = self.joystick.getRawButton(1)
             if pump_button:
                 self.pump_relay.set(wpilib.Relay.Value.kForward)

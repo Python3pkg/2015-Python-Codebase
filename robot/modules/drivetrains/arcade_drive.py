@@ -1,10 +1,5 @@
-import asyncio
 import wpilib
 import yeti
-
-from yeti.interfaces import gamemode
-from yeti.wpilib_extensions import Referee
-
 
 class ArcadeDrive(yeti.Module):
     """
@@ -12,26 +7,15 @@ class ArcadeDrive(yeti.Module):
     """
 
     def module_init(self):
-        #Initialize the Referee for the module.
-        self.referee = Referee(self)
-
-        #Setup a joystick
+        # Setup a joystick
         self.joystick = wpilib.Joystick(0)
-        self.referee.watch(self.joystick)
 
-        #Setup the robotdrive
-        self.robotdrive = wpilib.RobotDrive(0, 1, 2, 3)
-        self.referee.watch(self.robotdrive)
+        # Setup the robotdrive
+        self.robotdrive = wpilib.RobotDrive(1, 2, 3, 4)
 
-    @gamemode.teleop_task
-    @asyncio.coroutine
-    def teleop_loop(self):
+    def teleop_periodic(self):
+        # Get the joystick values and drive the motors.
+        self.robotdrive.arcadeDrive(-self.joystick.getY(), -self.joystick.getX())
 
-        #Loop until end of teleop mode.
-        while gamemode.is_teleop():
-
-            #Get the joystick values and drive the motors.
-            self.robotdrive.arcadeDrive(-self.joystick.getY(), -self.joystick.getX())
-
-            #Pause for a moment to let the rest of the code run.
-            yield from asyncio.sleep(.05)
+    def module_deinit(self):
+        self.robotdrive.free()

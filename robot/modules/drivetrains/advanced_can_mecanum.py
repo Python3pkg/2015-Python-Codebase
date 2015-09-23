@@ -3,11 +3,7 @@ import wpilib
 import yeti
 import math
 
-from yeti.interfaces import gamemode, datastreams
-from yeti.interfaces.object_proxy import public_object
-from yeti.wpilib_extensions import Referee
-
-class SimulatedCANJaguar():
+class SimulatedCANJaguar:
 
     MAX_RPM_OUTPUT = 500
 
@@ -286,13 +282,9 @@ class AdvancedCANMecanum(yeti.Module):
     # in degrees.
     mecanum_kinematic_k = 0.03927
 
-
     def module_init(self):
-        # Initialize the Referee for the module.
-        self.referee = Referee(self)
 
         self.joystick = wpilib.Joystick(0)
-        self.referee.watch(self.joystick)
 
         # Setup motor controllers
         self.motor_controllers = list()
@@ -301,7 +293,6 @@ class AdvancedCANMecanum(yeti.Module):
                 controller = SimulatedCANJaguar(motor_id)
             else:
                 controller = wpilib.CANJaguar(motor_id)
-            self.referee.watch(controller)
             self.motor_controllers.append(controller)
         self.set_speed_mode()
 
@@ -354,6 +345,7 @@ class AdvancedCANMecanum(yeti.Module):
     reset_x_pos = 0
     reset_y_pos = 0
     reset_r_pos = 0
+
     @public_object(prefix="drivetrain")
     def reset_sensor_input(self, x_pos=0, y_pos=0, r_pos=0):
         self.reset_x_pos = x_pos
@@ -744,3 +736,9 @@ class AdvancedCANMecanum(yeti.Module):
             self.control_datastream.push({"forward_fps": forward_fps, "right_fps": right_fps, "ctrclockwise_dps": ctrclockwise_dps, "enable_esp": enable_esp})
 
             yield from asyncio.sleep(.05)
+
+    def module_deinit(self):
+        # Disable and free the jaguars
+        for controller in self.motor_controllers:
+            controller.disableControl()
+            controller.free()
