@@ -12,21 +12,13 @@ class AdvancedElevator(yeti.Module):
     # The CAN id for the CAN Jaguar
     JAG_CAN_ID = 10
 
-    USE_SIMULATED_JAGUAR = True
-    NT_DEBUG_OUT = True
-
-    # Encoder Config
-    HOME_POSITION = 2
-    TOTE_HEIGHT = 1.1
-
     POSITION_TOLERANCE = .2
     ENCODER_TICS_PER_ROTATION = 400
     ROT_PER_FOOT = 1/(.25 * math.pi)
 
     #################################
     # RUN VARS
-    calibration_ref = 0
-    calibrated = False
+    lift_setpoint = 0
 
     def module_init(self):
         self.gameclock = self.engine.get_module("gameclock")
@@ -38,6 +30,8 @@ class AdvancedElevator(yeti.Module):
         # Setup CAN jaguar
         self.lift_jaguar = wpilib.CANJaguar(self.JAG_CAN_ID)
         self.lift_jaguar.setPercentModeQuadEncoder(self.ENCODER_TICS_PER_ROTATION)
+
+        # Configure IO
         self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_encoder", deriv_order=1)
         self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_limit_upper")
         self.pipeline.add_sensor_poll(self.lift_jaguar.get, "lift_limit_lower")
@@ -63,85 +57,47 @@ class AdvancedElevator(yeti.Module):
         state = {}
         if sensors["lift_limit_lower"]:
             state["lift_pos"] = 0
+            state["lift_calibrated"] = True
         else:
-            state["lift_pos"] = last_state["lift_pos"] + sensors["lift_encoder"][1]*dt
+            state["lift_pos"] = last_state["lift_pos"] + sensors["lift_encoder"][1]*dt/self.ROT_PER_FOOT
         return state
 
-    def pipeline_control_update(self, dt, state, control):
-        return {"lift_motor": control["lift_pwr"]}
+    def pipeline_control_update(self, dt, state):
+        if self.gameclock.is_autonomous():
+            error = self.lift_setpoint - state["lift_pos"]
+            if not state["lift_calibrated"] or error < -self.POSITION_TOLERANCE:
+                return {"lift_motor": -1}
+            elif error > self.POSITION_TOLERANCE:
+                return {"lift_motor": 1}
+            else:
+                return {"lift_motor": 0}
+        else:
+            if state["lift_calibrated"]:
+                self.lift_setpoint = state["lift_pos"]
+            return {"lift_motor": self.joystick.getY()}
 
-    def teleop_periodic(self):
-        self.pipeline.control["lift_pwr"] = self.joystick.getY()
-
-    @asyncio.coroutine
-    def run_loop(self):
-        self.setpoint = self.get_position()
+    def enabled_init(self):
         self.lift_jaguar.enableControl()
-        while True:
 
-            if self.NT_DEBUG_OUT:
-                wpilib.SmartDashboard.putNumber("elvevator_pos", self.get_position())
-                wpilib.SmartDashboard.putNumber("elvevator_setpoint", self.setpoint)
-                wpilib.SmartDashboard.putBoolean("elvevator_calibrated", self.calibrated)
-
-            if not self.lift_jaguar.getForwardLimitOK():
-                self.calibration_ref = -self.lift_jaguar.getPosition()
-                self.calibrated = True
-
-            output = 0
-            if self.gameclock.is_teleop():
-                output = self.joystick.getY()
-                self.setpoint = self.get_position()
-            elif self.gameclock.is_autonomous():
-
-                # If setpoint is zero, always go down.
-                if self.setpoint <= 0 or not self.calibrated:
-                    if self.lift_jaguar.getForwardLimitOK():
-                        output = -1
-                    else:
-                        output = 0
-                else:
-                    pos_delta = self.setpoint - self.get_position()
-
-                    if abs(pos_delta) > self.POSITION_TOLERANCE:
-                        output = 1
-                        if pos_delta < 0:
-                            output = -output
-
-            self.lift_jaguar.set(-output)
-            wpilib.SmartDashboard.putNumber("elevator output", output)
-
-            yield from asyncio.sleep(.05)
+    def disabled_init(self):
         self.lift_jaguar.disableControl()
 
     def get_position(self):
-        return (-self.lift_jaguar.getPosition() - self.calibration_ref) / self.ROT_PER_FOOT
-
+        return self.pipeline.state["lift_pos"]
 
     def set_setpoint(self, value):
-        self.setpoint = value
+        self.pipeline.control["lift_setpoint"] = value
 
     @asyncio.coroutine
     def goto_pos(self, value):
-        self.logger.info("Goto {}".format(value))
+
+        # Configure control setpoint
         self.set_setpoint(value)
-        while True:
-            pos = self.get_position()
-            if abs(value - pos) <= self.POSITION_TOLERANCE and self.calibrated:
-                break
-            if not self.gameclock.is_autonomous():
-                break
-            self.set_setpoint(value)
-            yield from asyncio.sleep(.1)
-        self.logger.info("End goto {}".format(value))
+        self.pipeline.control["lift_auto"] = True
 
-    @asyncio.coroutine
-    def goto_home(self):
-        yield from self.goto_pos(self.HOME_POSITION)
-
-    @asyncio.coroutine
-    def goto_bottom(self):
-        yield from self.goto_pos(0)
+        # Wait for lift to be calibrated and at the desired value
+        yield from self.pipeline.until_state("lift_calibrated", True)
+        yield from self.pipeline.until_state("lift_pos", value, self.POSITION_TOLERANCE)
 
     def module_deinit(self):
         self.lift_jaguar.free()
