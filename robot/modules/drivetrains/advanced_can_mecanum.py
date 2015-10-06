@@ -116,8 +116,8 @@ def rotate_vector(x, y, angle):
     vector_angle, vector_magnitude = cartesian_to_polar(x, y)
     return polar_to_cartesian(angle + vector_angle, vector_magnitude)
 
-# This code is directly ported from team 254's 2011 ContinuousAccelFilter
 
+# This code is directly ported from team 254's 2011 ContinuousAccelFilter
 
 def continuous_accel_filter(distance_to_target, current_vel, goal_vel, max_accel, max_vel, delta_time):
 
@@ -226,7 +226,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -372,24 +372,16 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def x_at_setpoint(self):
-        input_data = self.sensor_input_datastream.get()
-        x_pos = input_data.get("x_pos", 0)
-        r_pos = input_data.get("r_pos", 0)
+        x_pos = self.sensor_input_datastream.get().get("x_pos", 0)
         x_setpoint = self.autodrive_setpoint_datastream.get().get("x_pos", 0)
-        config = self.autodrive_config_datastream.get()
-        x_tolerance, _ = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
-        x_tolerance = abs(x_tolerance)
+        x_tolerance = self.autodrive_config_datastream.get()["x_tolerance"]
         return abs(x_pos - x_setpoint) < x_tolerance
 
     @public_object(prefix="drivetrain")
     def y_at_setpoint(self):
-        input_data = self.sensor_input_datastream.get()
-        y_pos = input_data.get("y_pos", 0)
-        r_pos = input_data.get("r_pos", 0)
+        y_pos = self.sensor_input_datastream.get().get("y_pos", 0)
         y_setpoint = self.autodrive_setpoint_datastream.get().get("y_pos", 0)
-        config = self.autodrive_config_datastream.get()
-        _, y_tolerance = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
-        y_tolerance = abs(y_tolerance)
+        y_tolerance = self.autodrive_config_datastream.get()["y_tolerance"]
         return abs(y_pos - y_setpoint) < y_tolerance
 
     @public_object(prefix="drivetrain")
@@ -553,18 +545,14 @@ class AdvancedCANMecanum(yeti.Module):
                 setpoint_data = self.autodrive_setpoint_datastream.get()
                 config = self.autodrive_config_datastream.get()
 
-                max_x_speed, max_y_speed = rotate_vector(config["max_x_speed"], config["max_y_speed"], r_pos)
-                max_x_speed = abs(max_x_speed)
-                max_y_speed = abs(max_y_speed)
-                max_x_accel, max_y_accel = rotate_vector(config["max_x_acceleration"], config["max_y_acceleration"], r_pos)
-                max_x_accel = abs(max_x_accel)
-                max_y_accel = abs(max_y_accel)
-                x_tolerance, y_tolerance = rotate_vector(config["x_tolerance"], config["y_tolerance"], r_pos)
-                x_tolerance = abs(x_tolerance)
-                y_tolerance = abs(y_tolerance)
-
+                max_y_speed = config["max_y_speed"]
+                max_y_accel = config["max_y_acceleration"]
+                max_x_speed = config["max_x_speed"]
+                max_x_accel = config["max_x_acceleration"]
                 max_rot_speed = config["max_rot_speed"]
                 max_rot_accel = config["max_rot_acceleration"]
+                y_tolerance = config["y_tolerance"]
+                x_tolerance = config["x_tolerance"]
                 rot_tolerance = config["rot_tolerance"]
 
                 setpoint_x_pos = setpoint_data.get("x_pos", 0)

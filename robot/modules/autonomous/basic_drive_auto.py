@@ -16,7 +16,7 @@ class BasicDriveAuto(yeti.Module):
         yield from asyncio.sleep(.1)
         self.logger.info("Starting autonomous mode given by module " + self.name)
         self.drivetrain_control.push({"forward_fps": 5})
-        yield from asyncio.sleep(5)
+        yield from asyncio.sleep(2)
         self.drivetrain_control.push({"forward_fps": 0})
         self.logger.info("Ending autonomous mode -- waiting for mode to change")
         while gamemode.is_autonomous():

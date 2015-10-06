@@ -97,7 +97,7 @@ class AdvancedElevator(yeti.Module):
     # The CAN id for the CAN Jaguar
     MASTER_CAN_ID = 10
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
     NT_DEBUG_OUT = True
 
     # Encoder Config

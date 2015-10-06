@@ -15,5 +15,5 @@ class PhysicsEngine(core.PhysicsEngine):
         front_right_wheel = -hal_data["pwm"][5]["value"]
         rear_right_wheel = -hal_data["pwm"][3]["value"]
 
-        vx, vy, vr = drivetrains.mecanum_drivetrain(rear_left_wheel, rear_right_wheel, front_left_wheel, front_right_wheel, .5, 14)
+        vx, vy, vr = drivetrains.mecanum_drivetrain(rear_left_wheel, rear_right_wheel, front_left_wheel, front_right_wheel, 1.5, 2, 10)
         self.physics_controller.vector_drive(vx, vy, vr, tm_diff)
