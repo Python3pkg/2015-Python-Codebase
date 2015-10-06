@@ -26,6 +26,22 @@ class ThreeToteAuto(yeti.Module):
         if not gamemode.is_autonomous():
             raise EndOfAutoException
 
+    def nimble_drive_config(self):
+        self.drivetrain_config_datastream.push({"max_y_speed": 9, "max_y_acceleration": 8, "y_tolerance": .5,
+                                                "max_x_speed": 9, "max_x_acceleration": 8, "x_tolerance": .5,
+                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 20})
+
+    def precise_drive_config(self):
+        self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": .3,
+                                                "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": .3,
+                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 20})
+
+    def dead_drive_config(self):
+        self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": 5,
+                                                "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": 5,
+                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 50})
+
+
     @asyncio.coroutine
     def do_pause(self):
         self.check_mode()
@@ -52,6 +68,8 @@ class ThreeToteAuto(yeti.Module):
         """
         self.report("Getting tote at y={}".format(y_pos))
 
+        self.nimble_drive_config()
+
         # If we have room, raise forks and close in on tote.
         if self.drivetrain_sensor_input.get()["y_pos"] < y_pos - 1.7:
             self.logger.info("waiting!")
@@ -60,11 +78,12 @@ class ThreeToteAuto(yeti.Module):
             yield from call_public_coroutine("drivetrain.wait_for_x")
 
         # Drive to tote.
+        self.precise_drive_config()
         self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
         # Increase y tolerance to stop any movement.
-        self.drivetrain_config_datastream.push({"y_tolerance": 1, "x_tolerance": 1})
+        self.dead_drive_config()
 
         # Grab tote.
         yield from call_public_coroutine("elevator.goto_pos", .3)
@@ -73,7 +92,7 @@ class ThreeToteAuto(yeti.Module):
         yield from call_public_coroutine("elevator.goto_pos", .8)
 
         # Decrease translation tolerance back to normal.
-        call_public_method("drivetrain.reset_auto_config")
+        self.precise_drive_config()
 
         # Set elevator to lift before exiting
         call_public_method("elevator.set_setpoint", 2.5)
@@ -83,6 +102,8 @@ class ThreeToteAuto(yeti.Module):
         """
         Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
         """
+
+        self.nimble_drive_config()
 
         self.report("Scoring stack at x={}".format(stack_x_pos))
 
@@ -101,6 +122,8 @@ class ThreeToteAuto(yeti.Module):
         self.drivetrain_setpoint_datastream.push({"y_pos": stack_y - 2})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
+        self.precise_drive_config()
+
     @asyncio.coroutine
     def move_container(self, y_pos):
         """
@@ -109,6 +132,8 @@ class ThreeToteAuto(yeti.Module):
         and return.
         """
         self.report("Moving container at y={}".format(y_pos))
+
+        self.nimble_drive_config()
 
         # Set the x and y setpoint to off the corner of the container (If it had a corner!)
         self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
@@ -134,7 +159,6 @@ class ThreeToteAuto(yeti.Module):
             self.PAUSE = wpilib.SmartDashboard.getNumber("pause_duration")
             call_public_method("drivetrain.auto_drive_enable")
             call_public_method("drivetrain.reset_sensor_input")
-            call_public_method("drivetrain.reset_auto_config")
             self.reset_auto_time()
 
             yield from self.get_tote(0)
@@ -142,6 +166,8 @@ class ThreeToteAuto(yeti.Module):
             yield from self.move_container(2.7)
             yield from self.do_pause()
             yield from self.get_tote(6.5)
+            yield from self.do_pause()
+            yield from self.move_container(9.2)
             yield from self.do_pause()
             yield from self.get_tote(13)
             yield from self.do_pause()
