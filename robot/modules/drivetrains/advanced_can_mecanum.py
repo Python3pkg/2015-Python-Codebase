@@ -226,7 +226,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = True
+    USE_SIMULATED_JAGUAR = False
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -366,8 +366,8 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": .3,
-                                               "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": .3,
+        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 7, "y_tolerance": .3,
+                                               "max_x_speed": 6, "max_x_acceleration": 4, "x_tolerance": .3,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     @public_object(prefix="drivetrain")

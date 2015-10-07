@@ -67,7 +67,7 @@ class TwoToteAuto(yeti.Module):
         self.drivetrain_config_datastream.push({"y_tolerance": 1, "x_tolerance": 1})
 
         # Grab tote.
-        yield from call_public_coroutine("elevator.goto_pos", .3)
+        yield from call_public_coroutine("elevator.goto_pos", 0)
 
         # Lift tote slightly
         yield from call_public_coroutine("elevator.goto_pos", 2)
@@ -86,7 +86,7 @@ class TwoToteAuto(yeti.Module):
         self.report("Moving container at y={}".format(y_pos))
 
         # Set the x and y setpoint to off the corner of the container (If it had a corner!)
-        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.7, "y_pos": y_pos - 2.5, "r_pos": 0})
         self.check_mode()
 
         # Wait until we clear the container
