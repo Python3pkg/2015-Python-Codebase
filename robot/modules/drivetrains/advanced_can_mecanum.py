@@ -10,12 +10,24 @@ from yeti.wpilib_extensions import Referee
 class SimulatedCANJaguar():
 
     MAX_RPM_OUTPUT = 500
+    P = 0
+    I = 0
+    D = 0
 
     def __init__(self, CAN_ID):
         self.talon = wpilib.Talon(CAN_ID - 10)
-        self.position = 0
         self.last_update = wpilib.Timer.getFPGATimestamp()
+        self.last_set = self.last_update
+
+        self.position = 0
         self.speed = 0
+        self.accel = 0
+
+        self.percent_out = 0
+
+        self.i_accum = 0
+
+        self.value = 0
         self.mode = wpilib.CANJaguar.ControlMode.PercentVbus
         self.enabled = False
 
@@ -34,30 +46,49 @@ class SimulatedCANJaguar():
     def _update_physics(self):
         current_time = wpilib.Timer.getFPGATimestamp()
         delta_time = current_time - self.last_update
-        self.position += self.speed * (delta_time/60)
+        new_accel = (self.percent_out*self.MAX_RPM_OUTPUT/60 - self.speed)*10
+        avg_accel = (self.accel + new_accel)/2
+        new_speed = self.speed + avg_accel*delta_time
+        avg_speed = (self.speed + new_speed)/2
+        self.position += avg_speed * delta_time
+        self.accel = new_accel
+        self.speed = new_speed
         self.last_update = current_time
 
     def set(self, value):
         self._update_physics()
+        current_time = wpilib.Timer.getFPGATimestamp()
+        delta_time = current_time - self.last_set
         if self.enabled:
             if self.mode == wpilib.CANJaguar.ControlMode.Speed:
-                self.speed = value
-                self.talon.set(value / self.MAX_RPM_OUTPUT)
+                error = value/60 - self.speed
+                self.i_accum = min(1, max(self.i_accum + error*delta_time, -1))
+                percent_out = self.percent_out + (self.P*error + self.I*self.i_accum + self.D*self.accel)*delta_time
+                self._set(percent_out)
             elif self.mode == wpilib.CANJaguar.ControlMode.PercentVbus:
-                self.speed = value * self.MAX_RPM_OUTPUT
-                self.talon.set(value)
+                self._set(value)
+        self.last_set = current_time
+
+    def _set(self, percentVbus):
+        percentVbus = min(1, max(percentVbus, -1))
+        self.talon.set(self.speed*60/self.MAX_RPM_OUTPUT)
+        self.percent_out = percentVbus
 
     def get(self):
-        return self.speed
+        return self.speed*60
 
     def setPID(self, p, i, d):
         print("Set P: {}, I: {}, D{}".format(p, i, d))
+        self.P = p
+        self.I = i
+        self.D = d
+        self.i_accum = 0
 
     def getControlMode(self):
         return self.mode
 
     def getSpeed(self):
-        return self.speed
+        return self.speed*60
 
     def getPosition(self):
         self._update_physics()
@@ -226,7 +257,7 @@ class AdvancedCANMecanum(yeti.Module):
     and outputting to CAN Jaguars in closed-loop control mode.
     """
 
-    USE_SIMULATED_JAGUAR = False
+    USE_SIMULATED_JAGUAR = True
 
     ####################################
     # JOYSTICK CONTROLLER CONF
@@ -366,8 +397,8 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 7, "y_tolerance": .3,
-                                               "max_x_speed": 6, "max_x_acceleration": 4, "x_tolerance": .3,
+        self.autodrive_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 7, "y_tolerance": .3,
+                                               "max_x_speed": 14, "max_x_acceleration": 7, "x_tolerance": .3,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     @public_object(prefix="drivetrain")
@@ -440,6 +471,9 @@ class AdvancedCANMecanum(yeti.Module):
         self.reset_sensor_input_flag = True
         self.reset_jaguar_input_flag = True
         was_enabled = False
+        x_speed_out = 0
+        y_speed_out = 0
+        r_speed_out = 0
         while True:
             yield from asyncio.sleep(.05)
 
@@ -518,6 +552,7 @@ class AdvancedCANMecanum(yeti.Module):
                     if r_override is not None:
                         r_pos = r_override
 
+
             # Save values for next iteration
             last_x_pos = x_pos
             last_y_pos = y_pos
@@ -569,17 +604,17 @@ class AdvancedCANMecanum(yeti.Module):
 
                 # Use continuous_accel_filter to determine proper speed out.
                 if abs(x_pos_delta) > x_tolerance:
-                    x_speed_out = continuous_accel_filter(x_pos_delta, x_speed, setpoint_x_speed, max_x_accel, max_x_speed, delta_time)
+                    x_speed_out = continuous_accel_filter(x_pos_delta, x_speed_out, setpoint_x_speed, max_x_accel, max_x_speed, delta_time)
                 else:
                     x_speed_out = 0
 
                 if abs(y_pos_delta) > y_tolerance:
-                    y_speed_out = continuous_accel_filter(y_pos_delta, y_speed, setpoint_y_speed, max_y_accel, max_y_speed, delta_time)
+                    y_speed_out = continuous_accel_filter(y_pos_delta, y_speed_out, setpoint_y_speed, max_y_accel, max_y_speed, delta_time)
                 else:
                     y_speed_out = 0
 
                 if abs(r_pos_delta) > rot_tolerance:
-                    r_speed_out = continuous_accel_filter(r_pos_delta, r_speed, setpoint_r_speed, max_rot_accel, max_rot_speed, delta_time)
+                    r_speed_out = continuous_accel_filter(r_pos_delta, r_speed_out, setpoint_r_speed, max_rot_accel, max_rot_speed, delta_time)
                 else:
                     r_speed_out = 0
 
