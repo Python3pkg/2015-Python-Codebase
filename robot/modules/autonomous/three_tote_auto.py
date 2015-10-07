@@ -27,14 +27,14 @@ class ThreeToteAuto(yeti.Module):
             raise EndOfAutoException
 
     def nimble_drive_config(self):
-        self.drivetrain_config_datastream.push({"max_y_speed": 9, "max_y_acceleration": 8, "y_tolerance": .5,
-                                                "max_x_speed": 9, "max_x_acceleration": 8, "x_tolerance": .5,
+        self.drivetrain_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 8, "y_tolerance": .5,
+                                                "max_x_speed": 14, "max_x_acceleration": 8, "x_tolerance": .5,
                                                 "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 20})
 
     def precise_drive_config(self):
-        self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": .3,
-                                                "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": .3,
-                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 20})
+        self.drivetrain_config_datastream.push({"max_y_speed": 10, "max_y_acceleration": 8, "y_tolerance": .3,
+                                                "max_x_speed": 10, "max_x_acceleration": 6, "x_tolerance": .3,
+                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     def dead_drive_config(self):
         self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": 5,

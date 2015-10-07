@@ -397,8 +397,8 @@ class AdvancedCANMecanum(yeti.Module):
 
     @public_object(prefix="drivetrain")
     def reset_auto_config(self):
-        self.autodrive_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 7, "y_tolerance": .3,
-                                               "max_x_speed": 14, "max_x_acceleration": 7, "x_tolerance": .3,
+        self.autodrive_config_datastream.push({"max_y_speed": 10, "max_y_acceleration": 6, "y_tolerance": .3,
+                                               "max_x_speed": 10, "max_x_acceleration": 4, "x_tolerance": .3,
                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     @public_object(prefix="drivetrain")
