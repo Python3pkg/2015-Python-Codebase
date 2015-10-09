@@ -27,18 +27,18 @@ class ThreeToteAuto(yeti.Module):
             raise EndOfAutoException
 
     def nimble_drive_config(self):
-        self.drivetrain_config_datastream.push({"max_y_speed": 14, "max_y_acceleration": 8, "y_tolerance": .5,
-                                                "max_x_speed": 14, "max_x_acceleration": 8, "x_tolerance": .5,
-                                                "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 20})
+        self.drivetrain_config_datastream.push({"max_y_speed": 12, "max_y_acceleration": 7, "y_tolerance": .5,
+                                                "max_x_speed": 12, "max_x_acceleration": 7, "x_tolerance": .5,
+                                                "max_rot_speed": 220, "max_rot_acceleration": 120, "rot_tolerance": 10})
 
     def precise_drive_config(self):
-        self.drivetrain_config_datastream.push({"max_y_speed": 10, "max_y_acceleration": 8, "y_tolerance": .3,
-                                                "max_x_speed": 10, "max_x_acceleration": 6, "x_tolerance": .3,
+        self.drivetrain_config_datastream.push({"max_y_speed": 10, "max_y_acceleration": 6, "y_tolerance": .1,
+                                                "max_x_speed": 10, "max_x_acceleration": 4, "x_tolerance": .1,
                                                 "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 10})
 
     def dead_drive_config(self):
-        self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 8, "y_tolerance": 5,
-                                                "max_x_speed": 4, "max_x_acceleration": 6, "x_tolerance": 5,
+        self.drivetrain_config_datastream.push({"max_y_speed": 7, "max_y_acceleration": 6, "y_tolerance": 5,
+                                                "max_x_speed": 7, "max_x_acceleration": 4, "x_tolerance": 5,
                                                 "max_rot_speed": 180, "max_rot_acceleration": 90, "rot_tolerance": 50})
 
 
@@ -77,52 +77,25 @@ class ThreeToteAuto(yeti.Module):
             yield from call_public_coroutine("elevator.goto_pos", 2.5)
             yield from call_public_coroutine("drivetrain.wait_for_x")
 
-        # Drive to tote.
+        # Drive to tote (slightly ahead to nestle the tote in place).
         self.precise_drive_config()
-        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos, "r_pos": 0})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 0, "y_pos": y_pos+.25, "r_pos": 0})
         yield from call_public_coroutine("drivetrain.wait_for_xyr")
 
         # Increase y tolerance to stop any movement.
         self.dead_drive_config()
 
         # Grab tote.
-        yield from call_public_coroutine("elevator.goto_pos", .3)
+        yield from call_public_coroutine("elevator.goto_pos", 0)
 
         # Lift tote slightly
-        yield from call_public_coroutine("elevator.goto_pos", .8)
+        yield from call_public_coroutine("elevator.goto_pos", .5)
 
-        # Decrease translation tolerance back to normal.
-        self.precise_drive_config()
+        # Set y setpoint
+        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos-.25})
 
         # Set elevator to lift before exiting
         call_public_method("elevator.set_setpoint", 2.5)
-
-    @asyncio.coroutine
-    def score_stack(self, stack_x_pos):
-        """
-        Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
-        """
-
-        self.nimble_drive_config()
-
-        self.report("Scoring stack at x={}".format(stack_x_pos))
-
-        # Start lowering the forks
-        call_public_method("elevator.set_setpoint", 1)
-
-        # Strafe to stack x pos
-        self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-
-        # Drop stack
-        yield from call_public_coroutine("elevator.goto_pos", .4)
-
-        # Get stack y and back off
-        stack_y = self.drivetrain_sensor_input.get()["y_pos"]
-        self.drivetrain_setpoint_datastream.push({"y_pos": stack_y - 2})
-        yield from call_public_coroutine("drivetrain.wait_for_xyr")
-
-        self.precise_drive_config()
 
     @asyncio.coroutine
     def move_container(self, y_pos):
@@ -136,21 +109,50 @@ class ThreeToteAuto(yeti.Module):
         self.nimble_drive_config()
 
         # Set the x and y setpoint to off the corner of the container (If it had a corner!)
-        self.drivetrain_setpoint_datastream.push({"x_pos": 2.5, "y_pos": y_pos - 2.5, "r_pos": 0})
+        self.drivetrain_setpoint_datastream.push({"x_pos": 2.7, "y_pos": y_pos - 3, "r_pos": 0})
         self.check_mode()
 
         # Wait until we clear the container
-        while self.drivetrain_sensor_input.get().get("x_pos") < 2:
-            yield from asyncio.sleep(.1)
+        while self.drivetrain_sensor_input.get().get("x_pos") < 1:
+            yield from asyncio.sleep(.05)
             self.check_mode()
 
         # Set y_pos a little ahead of the container
-        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1})
+        self.drivetrain_setpoint_datastream.push({"y_pos": y_pos + 1.5})
 
         # Wait for y to be close enough
         while self.drivetrain_sensor_input.get().get("y_pos") < y_pos:
-            yield from asyncio.sleep(.1)
+            yield from asyncio.sleep(.05)
             self.check_mode()
+
+    @asyncio.coroutine
+    def score_stack(self, stack_x_pos):
+        """
+        Drive to the x position of the scoring spot. Then lower the forks. Then back up 2 feet.
+        """
+        self.nimble_drive_config()
+
+        self.report("Scoring stack at x={}".format(stack_x_pos))
+
+        # Start lowering the forks
+        call_public_method("elevator.set_setpoint", .3)
+
+        # drive to stack x pos
+        self.drivetrain_setpoint_datastream.push({"x_pos": stack_x_pos+3, "r_pos": 90})
+
+        # Wait until we are close to the stack x pos
+        while self.drivetrain_sensor_input.get().get("x_pos") < stack_x_pos-3:
+            yield from asyncio.sleep(.05)
+            self.check_mode()
+
+        # Drop stack
+        yield from call_public_coroutine("elevator.goto_pos", 0)
+        self.report("Stack dropped at x={}".format(self.drivetrain_sensor_input.get().get("x_pos")))
+
+        # Finish movement
+        yield from call_public_coroutine("drivetrain.wait_for_xyr")
+
+        self.precise_drive_config()
 
     @asyncio.coroutine
     @gamemode.autonomous_task

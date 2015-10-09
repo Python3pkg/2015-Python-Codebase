@@ -55,7 +55,7 @@ class OneToteAuto(yeti.Module):
             yield from self.do_pause()
 
             # Drive to x=4, spinning 90 degrees clockwise
-            self.drivetrain_setpoint_datastream.push({"x_pos": 4, "r_pos": -90})
+            self.drivetrain_setpoint_datastream.push({"y_pos": -.25, "x_pos": 4, "r_pos": -90})
             yield from call_public_coroutine("drivetrain.wait_for_r")
             self.check_mode()
 

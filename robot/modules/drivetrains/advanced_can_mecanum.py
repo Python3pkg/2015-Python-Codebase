@@ -475,7 +475,7 @@ class AdvancedCANMecanum(yeti.Module):
         y_speed_out = 0
         r_speed_out = 0
         while True:
-            yield from asyncio.sleep(.05)
+            yield from asyncio.sleep(.025)
 
             #####################################
             # Sensor Input calculations
@@ -551,7 +551,6 @@ class AdvancedCANMecanum(yeti.Module):
                         y_pos = y_override
                     if r_override is not None:
                         r_pos = r_override
-
 
             # Save values for next iteration
             last_x_pos = x_pos
